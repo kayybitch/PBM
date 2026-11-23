@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PBWEB - CIGAR ULTIMATE
 // @namespace    cigarultimate.local
-// @version      1.0.0
+// @version      1.0.1
 // @description  CIGAR ULTIMATE (NOVA core: aimbot + ESP + full features + anti-kick + performance mode, keyless)
 // @match        *://pbmobile.app/*
 // @match        *://*.pbmobile.app/*
@@ -25,6 +25,8 @@
   function ensureLobbyBadge() {
     try {
       if (document.getElementById('cigar-lobby-badge')) return;
+      var host = document.body || document.documentElement;
+      if (!host) return;
       var badge = document.createElement('div');
       badge.id = 'cigar-lobby-badge';
       badge.style.cssText = [
@@ -41,7 +43,7 @@
           'box-shadow:0 0 8px rgba(6,182,212,0.5);">♪</span>' +
         '<span style="font-size:11px;font-weight:800;color:#67e8f9;letter-spacing:0.35px;' +
           'text-shadow:0 0 8px rgba(103,232,249,0.4);">TikTok : @kiianakmamih</span>';
-      (document.body || document.documentElement).appendChild(badge);
+      host.appendChild(badge);
     } catch (e) {}
   }
   ensureLobbyBadge();
@@ -50,7 +52,7 @@
      2. CORE ENGINE
      ============================================================================ */
   function bootCore() {
-    var V = '1.0.0';
+    var V = '1.0.1';
     var BRAND = 'CIGAR ULTIMATE';
 
     function log() {
@@ -468,7 +470,7 @@
 
     function hasLineOfSight(g, cam, hp) {
       try {
-        if (typeof g.cast !== 'function') return true;
+        if (!g || typeof g.cast !== 'function' || !cam || !cam.position) return true;
         var eye = cam.position;
         var dx = hp.x - eye.x, dy = hp.y - eye.y, dz = hp.z - eye.z;
         var dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
@@ -629,7 +631,7 @@
       if (document.hidden) {
         fireHeld = 0; st.fire = 0; AB.freshFire = 0;
         if (typeof FLY !== 'undefined') { FLY.jumpHeld = 0; FLY.crouchHeld = 0; }
-        if (silentHolding) up();
+        if (silentHolding || holding) up();
       }
     });
 
@@ -668,7 +670,7 @@
     addEventListener('blur', function () {
       fireHeld = 0; st.fire = 0; AB.freshFire = 0;
       FLY.jumpHeld = 0; FLY.crouchHeld = 0;
-      if (silentHolding) up();
+      if (silentHolding || holding) up();
     });
 
     function flyPosObj(s) {
@@ -1040,7 +1042,7 @@
     }
 
     /* --------------------------------------------------------------------------
-       2.8 WEAPON & SILENT AIM (HOLD AUTO-SHOOT + 360 RAPID TAP)
+       2.8 WEAPON & SILENT AIM (FIXED AUTO-SHOOT SAAT NGEKER)
        -------------------------------------------------------------------------- */
     var PR = { on: 0, ms: 120 };
     var RF = { on: 0, antiSpam: 1, lastFireAt: 0, minGapMs: 65 };
@@ -1122,12 +1124,10 @@
       var cam = g && g.camera;
       var scene = g && g.scene;
 
-      // Jika referensi berubah (map change / respawn), restore ke referensi lama dulu
       if (PERF.refRenderer && r && PERF.refRenderer !== r) perfRestoreRefs();
       if (PERF.refScene && scene && PERF.refScene !== scene) perfRestoreRefs();
 
       if (PERF.level <= 1) {
-        // Level 1 hanya throttle visual — tidak menyentuh renderer
         if (PERF.refRenderer) perfRestoreRefs();
         return;
       }
@@ -1217,9 +1217,43 @@
       fovDeg: 35,
       minDist: 1.5,
       target: 'head',
-      lastShotAt: 0
+      lastShotAt: 0,
+      requireScope: 0,
+      maxCrosshairDeg: 10,
+      graceMs: 90
     };
-    var SA_HEAD = { x: 0, y: 0, z: 0, bot: null, validUntil: 0 };
+    var SA_HEAD = { x: 0, y: 0, z: 0, bot: null, validUntil: 0, aimAngleDeg: 999 };
+    var _scopeState = { active: false, since: 0, rmbDown: false };
+
+    addEventListener('mousedown', function (e) {
+      if (e.button === 2) _scopeState.rmbDown = true;
+    }, true);
+    addEventListener('mouseup', function (e) {
+      if (e.button === 2) _scopeState.rmbDown = false;
+    }, true);
+
+    function isScoping(g, p, s) {
+      try {
+        if (_scopeState.rmbDown) return true;
+        if (s && (s.scoped || s.zooming || s.aiming || s.isAim || s.isScope)) return true;
+        if (p && (p.scoped || p.zooming || p.aiming || p.isAim || p.isScope)) return true;
+        if (p && typeof p.scopeT === 'number' && p.scopeT > 0.08) return true;
+        if (g && g.camera && typeof g.camera.fov === 'number' && g.camera.fov < (O.fov - 4)) return true;
+      } catch (e) {}
+      return false;
+    }
+
+    function updateScopeGrace(g, p, s, now) {
+      var sc = isScoping(g, p, s);
+      if (sc && !_scopeState.active) {
+        _scopeState.active = true;
+        _scopeState.since = now;
+      } else if (!sc && _scopeState.active) {
+        _scopeState.active = false;
+        _scopeState.since = 0;
+      }
+      return sc;
+    }
 
     function saGetPoint(bot, fromPt) {
       if (!bot) return null;
@@ -1240,9 +1274,17 @@
     }
 
     function saUpdateHead(g) {
-      if (!SA.on || !g || !g.P || !g.P.s || g.P.s.dead) { SA_HEAD.bot = null; return; }
+      if (!SA.on || !g || !g.P || !g.P.s || g.P.s.dead) {
+        SA_HEAD.bot = null;
+        SA_HEAD.aimAngleDeg = 999;
+        return;
+      }
       var s = g.P.s, cam = g.camera, list = g.bots || [];
-      if (!cam || !cam.matrixWorld) { SA_HEAD.bot = null; return; }
+      if (!cam || !cam.matrixWorld) {
+        SA_HEAD.bot = null;
+        SA_HEAD.aimAngleDeg = 999;
+        return;
+      }
 
       var me = cam.matrixWorld.elements;
       var cx = me[12], cy = me[13], cz = me[14];
@@ -1250,7 +1292,7 @@
       var fx = -Math.sin(yaw) * cp, fy = Math.sin(pitch), fz = -Math.cos(yaw) * cp;
       var cosFov = Math.cos(clamp(SA.fovDeg, 1, 180) * Math.PI / 180);
 
-      var best = null, bestScore = 1e9;
+      var best = null, bestScore = 1e9, bestDeg = 999;
 
       for (var i = 0; i < list.length; i++) {
         var p = list[i];
@@ -1263,15 +1305,31 @@
         var dot = (dx * fx + dy * fy + dz * fz) / d;
         if (dot < cosFov) continue;
         var ang = Math.acos(clamp(dot, -1, 1));
+        var deg = ang * 57.2957795;
         var score = ang + d * 0.001;
-        if (score < bestScore) { bestScore = score; best = p; }
+        if (score < bestScore) {
+          bestScore = score;
+          best = p;
+          bestDeg = deg;
+        }
       }
 
-      if (!best) { SA_HEAD.bot = null; return; }
+      if (!best) {
+        SA_HEAD.bot = null;
+        SA_HEAD.aimAngleDeg = 999;
+        return;
+      }
       var targetPt = saGetPoint(best, C);
-      if (!targetPt) { SA_HEAD.bot = null; return; }
-      SA_HEAD.x = targetPt.x; SA_HEAD.y = targetPt.y; SA_HEAD.z = targetPt.z;
+      if (!targetPt) {
+        SA_HEAD.bot = null;
+        SA_HEAD.aimAngleDeg = 999;
+        return;
+      }
+      SA_HEAD.x = targetPt.x;
+      SA_HEAD.y = targetPt.y;
+      SA_HEAD.z = targetPt.z;
       SA_HEAD.bot = best;
+      SA_HEAD.aimAngleDeg = bestDeg;
       SA_HEAD.validUntil = performance.now() + 250;
     }
 
@@ -1316,16 +1374,26 @@
     }
 
     function saFireStep(g) {
-      var s = g && g.P && g.P.s;
+      var p = g && g.P;
+      var s = p && p.s;
       var now = performance.now();
+      var scoping = updateScopeGrace(g, p, s, now);
+
+      var graceOk = !scoping || (now - _scopeState.since >= SA.graceMs);
+      var scopeOk = !SA.requireScope || scoping;
+      var crosshairOk = SA_HEAD.aimAngleDeg <= SA.maxCrosshairDeg;
 
       var hasValidTarget =
         SA.on &&
         SA_HEAD.bot &&
         s && !s.dead &&
-        isHumanEnemy(SA_HEAD.bot, s) &&
         now <= SA_HEAD.validUntil &&
-        saCanFire(g);
+        saCanFire(g) &&
+        isHumanEnemy(SA_HEAD.bot, s) &&
+        hasLineOfSight(g, g.camera, { x: SA_HEAD.x, y: SA_HEAD.y, z: SA_HEAD.z }) &&
+        graceOk &&
+        scopeOk &&
+        crosshairOk;
 
       if (!hasValidTarget) {
         releaseSilentFire(g);
@@ -2030,6 +2098,11 @@
 
       if (!self.__pbYawLocked) lockYawPitch(self);
 
+      if (!cam || !cam.matrixWorld || !cam.matrixWorld.elements) {
+        aimFlush(g);
+        return;
+      }
+
       var m = cam.matrixWorld.elements;
       C.x = m[12]; C.y = m[13]; C.z = m[14];
 
@@ -2064,7 +2137,7 @@
         } catch (e) {}
       }
 
-      var list = g.bots;
+      var list = g.bots || [];
       var best = null, bestPt = null, bestA = 1e9, bestD = 1e9;
       var myTeam = self.team, n = 0, en = 0;
 
@@ -2098,6 +2171,7 @@
 
       var wantAcquire = P.aimbotOn && (AB.freshFire || (fireHeld > 0 && now >= AB.lockUntil));
       if (!wantAcquire && !P.autoFire && !fireHeld) {
+        if (holding && !silentHolding) up();
         st.bots = n;
         aimFlush(g);
         return;
@@ -2132,6 +2206,7 @@
         var curAp = getTargetPointLead(AB.target.bot, C) || AB.target.p;
         if (!canAimbotTarget(g, cam, AB.target.bot, curAp)) {
           AB.target = null; AB.lockUntil = 0; AIMLOCK.locked = false; st.aimbot = 0;
+          if (holding && !silentHolding) up();
           aimFlush(g);
           return;
         }
@@ -2178,7 +2253,11 @@
       var fireTarget = (doAimbot && AB.target) ? AB.target.bot : best;
       var firePoint = (doAimbot && AB.target) ? AB.target.p : bestPt;
       if (!fireTarget || !firePoint) { aimFlush(g); return; }
-      if (!doAimbot && !FL.wallbang && !hasLineOfSightThrottled(g, cam, fireTarget, firePoint)) { aimFlush(g); return; }
+
+      if (!fireHeld && P.autoFire && !hasLineOfSightThrottled(g, cam, fireTarget, firePoint)) {
+        aimFlush(g);
+        return;
+      }
 
       var hit = null;
       try { hit = hitTestSafe(fireTarget, C, F, P.reach); } catch (e) {}
@@ -2259,7 +2338,7 @@
       aimbotHold: function (v) { if (typeof v === 'number' && v >= 50) { P.aimbotHoldMs = v; try { localStorage.setItem('ir_aimbot_hold', String(v)); } catch (e) {} } return P.aimbotHoldMs; },
       bulletSpeed: function (v) { if (typeof v === 'number' && v > 0) { P.bulletSpeed = v; try { localStorage.setItem('ir_bullet_speed', String(v)); } catch (e) {} } return P.bulletSpeed; },
       leadFactor: function (v) { if (typeof v === 'number' && v >= 0) { P.leadFactor = v; try { localStorage.setItem('ir_lead', String(v)); } catch (e) {} } return P.leadFactor; },
-      autoFire: function (on) { P.autoFire = on ? 1 : 0; return P.autoFire; },
+      autoFire: function (on) { P.autoFire = on ? 1 : 0; if (!P.autoFire && holding && !silentHolding) up(); return P.autoFire; },
       sens: function (v) { if (typeof v === 'number' && v > 0) { O.sens = v; try { var o = JSON.parse(localStorage.getItem('pbweb_opts') || '{}'); o.sens = v; localStorage.setItem('pbweb_opts', JSON.stringify(o)); } catch (e) {} } return O.sens; },
       fov: function (v) { if (typeof v === 'number' && v > 0) { O.fov = v; try { var o = JSON.parse(localStorage.getItem('pbweb_opts') || '{}'); o.fov = v; localStorage.setItem('pbweb_opts', JSON.stringify(o)); } catch (e) {} } return O.fov; },
       invert: function (on) { O.invert = !!on; try { var o = JSON.parse(localStorage.getItem('pbweb_opts') || '{}'); o.invert = O.invert; localStorage.setItem('pbweb_opts', JSON.stringify(o)); } catch (e) {} return O.invert; },
@@ -2312,6 +2391,15 @@
         SA.tapShot = on ? 1 : 0;
         if (!SA.tapShot && !SA.autoShoot) releaseSilentFire();
         return SA.tapShot;
+      },
+      silentRequireScope: function (on) {
+        SA.requireScope = on ? 1 : 0;
+        if (SA.requireScope && !silentHolding) releaseSilentFire();
+        return SA.requireScope;
+      },
+      silentMaxAngle: function (deg) {
+        if (typeof deg === 'number' && deg >= 1 && deg <= 180) SA.maxCrosshairDeg = deg;
+        return SA.maxCrosshairDeg;
       },
       silentTarget: function (t) { if (t === 'head' || t === 'body') SA.target = t; return SA.target; },
       silentFov: function (deg) { if (typeof deg === 'number' && deg > 0 && deg <= 180) SA.fovDeg = deg; return SA.fovDeg; },
@@ -2420,7 +2508,8 @@
         return {
           pred: PR.on, rapid: RF.on, rapidAntiSpam: RF.antiSpam,
           instScope: IS.on, trig: TB.on, silent: SA.on, silentAutoShoot: SA.autoShoot,
-          silentTapShot: SA.tapShot, silentTarget: SA.target, silentFov: SA.fovDeg,
+          silentTapShot: SA.tapShot, silentRequireScope: SA.requireScope,
+          silentMaxAngle: SA.maxCrosshairDeg, silentTarget: SA.target, silentFov: SA.fovDeg,
           silentMinDist: SA.minDist,
           lob: SL.on, respawn: IR.on, radar: RD.on, hpo: HPO.on, fovc: FC.on, tracer: TR.on,
           wallbang: FL.wallbang, infAmmo: FL.infAmmo, noRecoil: FL.noRecoil,
@@ -2431,7 +2520,7 @@
           silentNade: SN.on, silentNadeSide: SN.side, silentNadeMode: SN.mode,
           silentNadeTarget: SN.targetName, silentNadeBypass: SNB.on, espName: E.nameOn,
           perf: PERF.on, perfLevel: PERF.level,
-          saHead: SA_HEAD.bot ? { x: +SA_HEAD.x.toFixed(2), y: +SA_HEAD.y.toFixed(2), z: +SA_HEAD.z.toFixed(2), name: SA_HEAD.bot.name, hp: SA_HEAD.bot.hp } : null
+          saHead: SA_HEAD.bot ? { x: +SA_HEAD.x.toFixed(2), y: +SA_HEAD.y.toFixed(2), z: +SA_HEAD.z.toFixed(2), name: SA_HEAD.bot.name, hp: SA_HEAD.bot.hp, aimDeg: +SA_HEAD.aimAngleDeg.toFixed(1) } : null
         };
       }
     };
@@ -2470,6 +2559,7 @@
           rapid: xs.rapid, rapidAntiSpam: xs.rapidAntiSpam, instScope: xs.instScope,
           trig: xs.trig, silent: xs.silent,
           silentAutoShoot: xs.silentAutoShoot, silentTapShot: xs.silentTapShot,
+          silentRequireScope: xs.silentRequireScope, silentMaxAngle: xs.silentMaxAngle,
           silentTarget: xs.silentTarget, silentFov: xs.silentFov, silentMinDist: xs.silentMinDist,
           respawn: xs.respawn, radar: xs.radar, hpo: xs.hpo, fovc: xs.fovc, tracer: xs.tracer,
           wallbang: xs.wallbang, infAmmo: xs.infAmmo, noRecoil: xs.noRecoil,
@@ -2526,6 +2616,8 @@
         if (d.silent != null) PBX_API.silent(d.silent);
         if (d.silentAutoShoot != null) PBX_API.silentAutoShoot(d.silentAutoShoot);
         if (d.silentTapShot != null) PBX_API.silentTapShot(d.silentTapShot);
+        if (d.silentRequireScope != null) PBX_API.silentRequireScope(d.silentRequireScope);
+        if (d.silentMaxAngle > 0) PBX_API.silentMaxAngle(d.silentMaxAngle);
         if (d.silentTarget) PBX_API.silentTarget(d.silentTarget);
         if (d.silentFov > 0) PBX_API.silentFov(d.silentFov);
         if (d.silentMinDist >= 0) PBX_API.silentMinDist(d.silentMinDist);
@@ -2574,6 +2666,8 @@
        ============================================================================ */
     (function pbUI() {
       if (W.__pbUI) return;
+      var host = document.body || document.documentElement;
+      if (!host) return;
       W.__pbUI = 1;
 
       if (!document.querySelector('link[data-fa]')) {
@@ -2664,7 +2758,7 @@
         var t = document.querySelector('.fk-toast');
         if (!t) {
           t = mk('div', 'fk-toast');
-          document.body.appendChild(t);
+          (document.body || document.documentElement).appendChild(t);
         }
         t.textContent = msg;
         t.classList.add('show');
@@ -2725,7 +2819,7 @@
         '<span class="fk-tb-open"><i class="fa-solid fa-chevron-down"></i></span>');
       root.appendChild(tabbar);
 
-      document.body.appendChild(root);
+      host.appendChild(root);
 
       collapseBtn.addEventListener('click', function (e) {
         e.stopPropagation();
@@ -2851,7 +2945,7 @@
         r2.appendChild(sw(function () { return P.aimbotOn; }, function (v) { PB_API.aimbot(v); }));
         pg.appendChild(r2);
 
-        var r3 = row('Auto Fire', 'Tembak otomatis tanpa tap');
+        var r3 = row('Auto Fire', 'Tembak otomatis saat target terlihat');
         r3.appendChild(sw(function () { return P.autoFire; }, function (v) { PB_API.autoFire(v); }));
         pg.appendChild(r3);
 
@@ -2986,13 +3080,22 @@
         r1.appendChild(sw(function () { return SA.on; }, function (v) { PBX_API.silent(v); }));
         pg.appendChild(r1);
 
-        var r2 = row('Auto Shoot', 'Tembak otomatis saat target valid');
+        var r2 = row('Auto Shoot', 'Tembak otomatis saat crosshair pas');
         r2.appendChild(sw(function () { return SA.autoShoot; }, function (v) { PBX_API.silentAutoShoot(v); }));
         pg.appendChild(r2);
 
-        var r3 = row('Tap Shot', 'Tap cepat');
+        var r3 = row('Tap Shot', 'Tap cepat saat crosshair pas');
         r3.appendChild(sw(function () { return SA.tapShot; }, function (v) { PBX_API.silentTapShot(v); }));
         pg.appendChild(r3);
+
+        var rScope = row('Only On Scope', 'Auto shoot hanya saat ngeker/scope');
+        rScope.appendChild(sw(function () { return SA.requireScope; }, function (v) { PBX_API.silentRequireScope(v); }));
+        pg.appendChild(rScope);
+
+        pg.appendChild(slider('Max Aim °', 2, 35, 1,
+          function () { return SA.maxCrosshairDeg; },
+          function (v) { PBX_API.silentMaxAngle(v); },
+          function (v) { return v + '°'; }));
 
         pg.appendChild(select('Silent Target',
           [{ v: 'head', t: 'Head' }, { v: 'body', t: 'Body' }],
