@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         PBWEB - VANGUARD ELITE
-// @namespace    vanguardelite.local
-// @version      2.2.5
-// @description  VANGUARD ELITE (Hyperion Hard-Lock Aimbot + Silent Aim POV + Auto POV Circle + ESP + 360 Silent Aim + Anti-Kick + Performance Mode)
+// @name         PBWEB - CIGAR ELITE
+// @namespace    cigarelite.local
+// @version      1.0.0
+// @description  CIGAR ELITE (Cigar Hard-Lock Aimbot + Silent Aim POV + Auto POV Circle + ESP + 360 Silent Aim + Anti-Kick + Performance Mode)
 // @match        *://pbmobile.app/*
 // @match        *://*.pbmobile.app/*
 // @run-at       document-start
@@ -20,15 +20,15 @@
   if (W.__pb) return;
 
   /* ============================================================================
-     1. TOP-LEFT TIKTOK BADGE (@pbmobile_id)
+     1. TOP-LEFT TIKTOK BADGE (@pbmobile.id)
      ============================================================================ */
   function ensureLobbyBadge() {
     try {
       var host = document.body || document.documentElement;
       if (!host) return;
-      if (document.getElementById('vanguard-lobby-badge')) return;
+      if (document.getElementById('cigar-lobby-badge')) return;
       var badge = document.createElement('div');
-      badge.id = 'vanguard-lobby-badge';
+      badge.id = 'cigar-lobby-badge';
       badge.style.cssText = [
         'position:fixed;top:10px;left:12px;z-index:999999;pointer-events:none;user-select:none;',
         'display:inline-flex;align-items:center;gap:7px;',
@@ -42,7 +42,7 @@
           'background:linear-gradient(135deg,#06b6d4,#10b981);color:#fff;font-size:11px;font-weight:900;' +
           'box-shadow:0 0 8px rgba(6,182,212,0.5);">♪</span>' +
         '<span style="font-size:11px;font-weight:800;color:#67e8f9;letter-spacing:0.35px;' +
-          'text-shadow:0 0 8px rgba(103,232,249,0.4);">TikTok : @pbmobile_id</span>';
+          'text-shadow:0 0 8px rgba(103,232,249,0.4);">TikTok : @pbmobile.id</span>';
       host.appendChild(badge);
     } catch (e) {}
   }
@@ -52,11 +52,11 @@
      2. CORE ENGINE
      ============================================================================ */
   function bootCore() {
-    var V = '2.2.5';
-    var BRAND = 'VANGUARD ELITE';
+    var V = '1.0.0';
+    var BRAND = 'CIGAR ELITE';
 
     function log() {
-      try { console.log.apply(console, ['[VANGUARD]'].concat([].slice.call(arguments))); } catch (e) {}
+      try { console.log.apply(console, ['[CIGAR]'].concat([].slice.call(arguments))); } catch (e) {}
     }
 
     /* --------------------------------------------------------------------------
@@ -209,7 +209,7 @@
     })();
 
     /* --------------------------------------------------------------------------
-       2.2 STATE & KONFIGURASI GLOBAL (HYPERION HARD-LOCK + SILENT AIM POV)
+       2.2 STATE & KONFIGURASI GLOBAL (CIGAR HARD-LOCK + SILENT AIM POV)
        -------------------------------------------------------------------------- */
     var HIDDEN = { pb: null, pbvis: null, pbnade: null, pbqc: null, pbx: null };
 
@@ -606,7 +606,7 @@
     }, true);
 
     addEventListener('mousedown', function (e) {
-      if (e.target && e.target.closest && e.target.closest('#vanguard-panel')) return;
+      if (e.target && e.target.closest && e.target.closest('#cigar-panel')) return;
       if (e.button === 0) { fireHeld = 1; st.fire = 1; }
     }, true);
 
@@ -625,7 +625,7 @@
     var fireIds = new Set();
     function isFireButton(el) {
       if (!el || !el.closest) return false;
-      if (el.closest('#vanguard-panel')) return false;
+      if (el.closest('#cigar-panel')) return false;
       return !!el.closest('[data-action="fire"], .btn-fire, #btn-fire, #fire, [class*="fire"], [id*="fire"], [class*="shoot"], [id*="shoot"]');
     }
     function syncFire() { fireHeld = fireIds.size; st.fire = fireHeld; }
@@ -1843,7 +1843,7 @@
         var host = document.body || document.documentElement;
         if (!host) return;
         var w = document.createElement('div');
-        w.id = 'vanguard-pov-circle';
+        w.id = 'cigar-pov-circle';
         w.setAttribute('data-pb', '1');
         w.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);border:1.5px dashed rgba(6,182,212,.85);border-radius:50%;z-index:2147483500;pointer-events:none;box-shadow:0 0 12px rgba(6,182,212,0.18)';
         host.appendChild(w);
@@ -1917,7 +1917,7 @@
     }
 
     /* --------------------------------------------------------------------------
-       2.11 UNIFIED MAIN LOOP (HARD-LOCK AIMBOT + SILENT AIM POV + VANGUARD FEATURES)
+       2.11 UNIFIED MAIN LOOP (HARD-LOCK AIMBOT + SILENT AIM POV + CIGAR FEATURES)
        -------------------------------------------------------------------------- */
     var _timers = {
       wb: 0, esp: 0, bone: 0, tracer: 0, silentScan: 0, silentPovScan: 0,
@@ -2169,7 +2169,7 @@
       }
 
       /* =========================================================================
-         HYPERION HARD-LOCK AIMBOT CORE
+         CIGAR HARD-LOCK AIMBOT CORE
          ========================================================================= */
       var list = g.bots || [];
       var best = null, bestPt = null, bestScore = 1e9, bestA = 1e9, bestD = 1e9;
@@ -2573,7 +2573,7 @@
     /* --------------------------------------------------------------------------
        2.13 SETTINGS PERSISTENCE (CLEAN V6)
        -------------------------------------------------------------------------- */
-    var SETTINGS_KEY = 'vanguard_settings_v6';
+    var SETTINGS_KEY = 'cigar_settings_v6';
     var _saveTimer = 0;
 
     function saveSettings() {
@@ -2703,7 +2703,7 @@
     function mountUI() {
       var host = document.body || document.documentElement;
       if (!host) return setTimeout(mountUI, 50);
-      if (document.getElementById('vanguard-panel')) return;
+      if (document.getElementById('cigar-panel')) return;
 
       if (!document.querySelector('link[data-fa]')) {
         var fa = document.createElement('link');
@@ -2809,7 +2809,7 @@
       ];
 
       var root = mk('div', 'fk expanded');
-      root.id = 'vanguard-panel';
+      root.id = 'cigar-panel';
       ['touchstart', 'touchmove', 'mousedown'].forEach(function (evName) {
         root.addEventListener(evName, function (e) { e.stopPropagation(); }, false);
       });
@@ -2831,7 +2831,7 @@
 
       var bodyCol = mk('div', 'fk-body-col');
       var header = mk('div', 'fk-h');
-      header.innerHTML = '<span class="dot"></span><span class="title">VANGUARD ELITE</span><span class="v">v' + V + '</span>';
+      header.innerHTML = '<span class="dot"></span><span class="title">CIGAR ELITE</span><span class="v">v' + V + '</span>';
       var collapseBtn = mk('div', 'fk-toggle', '<i class="fa-solid fa-chevron-up"></i>');
       header.appendChild(collapseBtn);
       bodyCol.appendChild(header);
@@ -2851,7 +2851,7 @@
       root.appendChild(bodyCol);
 
       var tabbar = mk('div', 'fk-tabbar',
-        '<span class="fk-tb-title"><span class="dot"></span>VANGUARD ELITE</span>' +
+        '<span class="fk-tb-title"><span class="dot"></span>CIGAR ELITE</span>' +
         '<span class="fk-tb-open"><i class="fa-solid fa-chevron-down"></i></span>');
       root.appendChild(tabbar);
 
@@ -2973,7 +2973,7 @@
       // TAB 1: HARD-LOCK AIMBOT & SILENT AIM POV
       (function () {
         var pg = pages.aim;
-        pg.appendChild(sec('Hyperion Hard-Lock Aimbot', 'fa-crosshairs'));
+        pg.appendChild(sec('Cigar Hard-Lock Aimbot', 'fa-crosshairs'));
         var r1 = row('Hard Aimbot', 'Kunci kamera ke target di dalam POV');
         r1.appendChild(sw(function () { return aimOn; }, function (v) { v ? PB_API.on() : PB_API.off(); }));
         pg.appendChild(r1);
@@ -3286,13 +3286,13 @@
 
     mountUI();
     setInterval(function () {
-      if (!document.getElementById('vanguard-panel')) mountUI();
-      if (!document.getElementById('vanguard-lobby-badge')) ensureLobbyBadge();
+      if (!document.getElementById('cigar-panel')) mountUI();
+      if (!document.getElementById('cigar-lobby-badge')) ensureLobbyBadge();
     }, 1000);
 
     log(BRAND, V, 'up');
     requestAnimationFrame(mainLoop);
   }
 
-  try { bootCore(); } catch (e) { try { console.error('[VANGUARD] boot fail', e); } catch (_) {} }
+  try { bootCore(); } catch (e) { try { console.error('[CIGAR] boot fail', e); } catch (_) {} }
 })(typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
