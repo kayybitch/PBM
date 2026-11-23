@@ -22,7 +22,7 @@
   /* ============================================================================
      0. AUTH GATE (FAIL-CLOSED) - KEY SERVER via Google Apps Script
      ============================================================================ */
-  var AUTH_URL = 'https://script.google.com/macros/s/AKfycbzIJ5_XYrkcBY45DTPT5afQt5PlypcxiZ3WqIG1Qtax1pgV9bFPZY8ko7hU5LHFbfU1/exec';
+  var AUTH_URL = 'https://script.google.com/macros/s/AKfycbwqPOTfwRKpMpvCCYnZoJzsdDhX1FOj5-gxw06yFPry5BUG6IZTm1oK1RxI-qB40pIwrg/exec';
 
   var AUTH_KEY = 'vanguard_auth_v1';
   var AUTH_DEVICE_KEY = 'vanguard_device_uuid_v1';
