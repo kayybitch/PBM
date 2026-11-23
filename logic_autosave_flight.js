@@ -2602,7 +2602,7 @@
         var xs = PBX_API.st();
         var data = {
           version: 6,
-          aim: ps.aim, silentPov: P.silentPov, povCircleR: ps.povCircleR, hitbox: ps.hitbox,
+          aim: ps.aim, silentPov: P.silentPov, povCircle, povCircleR: ps.povCircleR, hitbox: ps.hitbox,
           hardLock: P.hardLock, sticky: P.sticky,
           bulletSpeed: ps.bulletSpeed, leadFactor: ps.leadFactor, lockMode: ps.lockMode,
           autoFire: P.autoFire, sens: O.sens, fov: O.fov, invert: O.invert,
