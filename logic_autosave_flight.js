@@ -2595,7 +2595,6 @@
        -------------------------------------------------------------------------- */
     var SETTINGS_KEY = 'vanguard_settings_v6';
     var _saveTimer = 0;
-    if (typeof s.povCircleShow === 'number') POV.showCircle = s.povCircleShow ? 1 : 0;
 
     function saveSettings() {
       try {
