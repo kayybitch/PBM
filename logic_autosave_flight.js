@@ -1558,7 +1558,7 @@
           });
           try { sock.send = function (d) { d = pbOut(d); if (d === null) return; try { if (rec.live && rsGet.call(rec.live) === 1) return sendN.call(rec.live, d); } catch (e) {} return sendN.call(sock, d); }; } catch (e) {}
           try { sock.close = function (c, r) { try { if (rec.live) closeN.call(rec.live, c, r); } catch (e) {} try { return closeN.call(sock, c, r); } catch (e) {} }; } catch (e) {}
-          try { Object.defineProperty(sock, 'readyState', { configurable: true, get: function () { try { if (rec.live) return rsGet.call(rec.live); } catch (e) {} try { return rsGet.call(sock); } catch (e) { return 3; } } }); } catch (e) {}
+          try { Object.defineProperty(sock, 'readyState', { configurable: true, get: function () { try { if (rec.live) return rsGet.call(rec.live); } catch (e) {} try { return rsGet.call(sock); } catch (e) {} return 3; } }); } catch (e) {}
           return sock;
         }
         function WSW(url, prot) {
@@ -1835,29 +1835,29 @@
     // POV Circle hanya muncul kalau toggle manual ON + fitur POV aktif
     var FC = { el: null };
     function fcTick() {
-  var needPov = POV.showCircle && ((aimOn && P.lockMode === 'pov') || !!P.silentPov);
+      var needPov = POV.showCircle && ((aimOn && P.lockMode === 'pov') || !!P.silentPov);
 
-  if (!needPov) {
-    if (FC.el) FC.el.style.display = 'none';
-    return;
-  }
+      if (!needPov) {
+        if (FC.el) FC.el.style.display = 'none';
+        return;
+      }
 
-  if (!FC.el || !FC.el.parentNode) {
-    var host = document.body || document.documentElement;
-    if (!host) return;
-    var w = document.createElement('div');
-    w.id = 'vanguard-pov-circle';
-    w.setAttribute('data-pb', '1');
-    w.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);border:1.5px dashed rgba(6,182,212,.85);border-radius:50%;z-index:2147483500;pointer-events:none;box-shadow:0 0 12px rgba(6,182,212,0.18)';
-    host.appendChild(w);
-    FC.el = w;
-  }
-  FC.el.style.display = 'block';
-  FC.el.style.borderColor = P.silentPov ? 'rgba(16,185,129,0.9)' : 'rgba(6,182,212,0.85)';
-  var r = P.povCircleR;
-  FC.el.style.width = (r * 2).toFixed(0) + 'px';
-  FC.el.style.height = (r * 2).toFixed(0) + 'px';
- }
+      if (!FC.el || !FC.el.parentNode) {
+        var host = document.body || document.documentElement;
+        if (!host) return;
+        var w = document.createElement('div');
+        w.id = 'vanguard-pov-circle';
+        w.setAttribute('data-pb', '1');
+        w.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);border:1.5px dashed rgba(6,182,212,.85);border-radius:50%;z-index:2147483500;pointer-events:none;box-shadow:0 0 12px rgba(6,182,212,0.18)';
+        host.appendChild(w);
+        FC.el = w;
+      }
+      FC.el.style.display = 'block';
+      FC.el.style.borderColor = P.silentPov ? 'rgba(16,185,129,0.9)' : 'rgba(6,182,212,0.85)';
+      var r = P.povCircleR;
+      FC.el.style.width = (r * 2).toFixed(0) + 'px';
+      FC.el.style.height = (r * 2).toFixed(0) + 'px';
+    }
 
     var TR = { on: 0, wrap: null, slots: [], _v: null, _camRef: null };
     function trClear() { for (var i = 0; i < TR.slots.length; i++) TR.slots[i].style.display = 'none'; }
@@ -2006,7 +2006,7 @@
             if (!QC.dead) { QC.dead = 1; QC.gate = {}; }
             QC.slot = p.slot; QC.ammo = p.ammo;
           } else {
-            if (QC.dead) { QC.dead = 0; QC.gate = {}; QC.slot = p.slot; QC.ammo = p.ammo; }
+            if (QC.dead) { QC.dead = 0; QC.gate = {}; }
             if (p.slot === QC.slot && typeof p.ammo === 'number' && QC.ammo >= 0 && p.ammo < QC.ammo) {
               QC.gate[p.slot] = +p.nextShot || 0;
               QC.n++;
@@ -2491,22 +2491,22 @@
         return out.sort(function (a, b) { return a.localeCompare(b, undefined, { sensitivity: 'base' }); });
       },
       povCircleShow: function (on) {
-  // Toggle tampil/sembunyi POV Circle tanpa matiin fitur POV-nya
-  if (on === undefined) {
-    POV.showCircle = POV.showCircle ? 0 : 1; // toggle kalau ga ada argumen
-  } else {
-    POV.showCircle = on ? 1 : 0;
-  }
-  fcTick();
-  return POV.showCircle;
-},
+        // Toggle tampil/sembunyi POV Circle tanpa matiin fitur POV-nya
+        if (on === undefined) {
+          POV.showCircle = POV.showCircle ? 0 : 1; // toggle kalau ga ada argumen
+        } else {
+          POV.showCircle = on ? 1 : 0;
+        }
+        fcTick();
+        return POV.showCircle;
+      },
       povCircleState: function () {
-  return {
-    showCircle: POV.showCircle,
-    activePov: (aimOn && P.lockMode === 'pov') || !!P.silentPov,
-    visible: !!POV.showCircle && ((aimOn && P.lockMode === 'pov') || !!P.silentPov)
-  };
-},
+        return {
+          showCircle: POV.showCircle,
+          activePov: (aimOn && P.lockMode === 'pov') || !!P.silentPov,
+          visible: !!POV.showCircle && ((aimOn && P.lockMode === 'pov') || !!P.silentPov)
+        };
+      },
       silentNadeHoming: function (on) { SN.homing = on ? 1 : 0; return SN.homing; },
       silentNadeLOS: function (on) { SN.requireLOS = on ? 1 : 0; return SN.requireLOS; },
       silentNadeBypass: function (on) { SNB.on = on ? 1 : 0; return SNB.on; },
@@ -2602,7 +2602,7 @@
         var xs = PBX_API.st();
         var data = {
           version: 6,
-          aim: ps.aim, silentPov: P.silentPov, povCircle, povCircleR: ps.povCircleR, hitbox: ps.hitbox,
+          aim: ps.aim, silentPov: P.silentPov, povCircleR: ps.povCircleR, hitbox: ps.hitbox,
           hardLock: P.hardLock, sticky: P.sticky,
           bulletSpeed: ps.bulletSpeed, leadFactor: ps.leadFactor, lockMode: ps.lockMode,
           autoFire: P.autoFire, sens: O.sens, fov: O.fov, invert: O.invert,
@@ -2641,6 +2641,7 @@
       try {
         if (d.aim != null) d.aim ? PB_API.on() : PB_API.off();
         if (d.silentPov != null) PB_API.silentPov(d.silentPov);
+        if (d.povCircleShow != null) PBX_API.povCircleShow(d.povCircleShow);
         if (d.povCircleR > 0) PB_API.povCircle(d.povCircleR);
         if (d.hitbox) PB_API.hitbox(d.hitbox);
         if (d.hardLock != null) PB_API.hardLock(d.hardLock);
@@ -3002,6 +3003,10 @@
         var rSp = row('Silent Aim POV', 'Peluru kena target di POV Circle (tanpa 1-hit)');
         rSp.appendChild(sw(function () { return P.silentPov; }, function (v) { PB_API.silentPov(v); }));
         pg.appendChild(rSp);
+
+        var rPovShow = row('POV Circle', 'Tampilkan/sembunyikan lingkaran POV');
+        rPovShow.appendChild(sw(function () { return POV.showCircle; }, function (v) { PBX_API.povCircleShow(v); }));
+        pg.appendChild(rPovShow);
 
         var r2 = row('Lock Saat Tembak', 'OFF = Selalu mengunci target di POV');
         r2.appendChild(sw(function () { return P.hardLock; }, function (v) { PB_API.hardLock(v); }));
