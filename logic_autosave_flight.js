@@ -20,7 +20,7 @@
   if (W.__pb) return;
 
   /* ============================================================================
-     1. TOP-LEFT TIKTOK BADGE (@pbmobile_id)
+     1. TOP-LEFT TIKTOK BADGE (@kiianakmamih)
      ============================================================================ */
   function ensureLobbyBadge() {
     try {
@@ -40,7 +40,7 @@
           'background:linear-gradient(135deg,#06b6d4,#10b981);color:#fff;font-size:11px;font-weight:900;' +
           'box-shadow:0 0 8px rgba(6,182,212,0.5);">♪</span>' +
         '<span style="font-size:11px;font-weight:800;color:#67e8f9;letter-spacing:0.35px;' +
-          'text-shadow:0 0 8px rgba(103,232,249,0.4);">TikTok : @pbmobile_id</span>';
+          'text-shadow:0 0 8px rgba(103,232,249,0.4);">TikTok : @kiianakmamih</span>';
       (document.body || document.documentElement).appendChild(badge);
     } catch (e) {}
   }
