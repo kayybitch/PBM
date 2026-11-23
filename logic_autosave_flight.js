@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         PBWEB - CIGAR ULTIMATE
-// @namespace    cigarultimate.local
-// @version      1.0.1
-// @description  CIGAR ULTIMATE (NOVA core: aimbot + ESP + full features + anti-kick + performance mode, keyless)
+// @name         PBWEB - VANGUARD ELITE
+// @namespace    vanguardelite.local
+// @version      2.4.0
+// @description  VANGUARD ELITE (NOVA core: aimbot + ESP + full features + anti-kick + performance mode + key gate, keyless)
 // @match        *://pbmobile.app/*
 // @match        *://*.pbmobile.app/*
 // @run-at       document-start
@@ -20,15 +20,271 @@
   if (W.__pb) return;
 
   /* ============================================================================
-     1. TOP-LEFT TIKTOK BADGE (@kiianakmamih)
+     0. AUTH GATE (FAIL-CLOSED) - KEY SERVER via Google Apps Script
+     ============================================================================ */
+  var AUTH_URL = 'https://script.google.com/macros/s/AKfycbzIJ5_XYrkcBY45DTPT5afQt5PlypcxiZ3WqIG1Qtax1pgV9bFPZY8ko7hU5LHFbfU1/exec';
+
+  var AUTH_KEY = 'vanguard_auth_v1';
+  var AUTH_DEVICE_KEY = 'vanguard_device_uuid_v1';
+  var AUTH_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;     // 24 jam offline tolerance
+  var AUTH_STATE = { status: 'pending', reason: '', key: '', deviceId: '', token: '', tokenExp: 0, bound: '' };
+
+  function authLog() {
+    try { console.log.apply(console, ['[VANGUARD AUTH]'].concat([].slice.call(arguments))); } catch (e) {}
+  }
+
+  function sha256Hex(str) {
+    var h1 = 0x811c9dc5, h2 = 0x01000193;
+    for (var i = 0; i < str.length; i++) {
+      var c = str.charCodeAt(i);
+      h1 ^= c; h1 = (h1 * 16777619) >>> 0;
+      h2 = ((h2 << 5) - h2 + c) >>> 0;
+    }
+    return ('00000000' + h1.toString(16)).slice(-8) + ('00000000' + h2.toString(16)).slice(-8);
+  }
+
+  function authDeviceUuid() {
+    try {
+      var existing = localStorage.getItem(AUTH_DEVICE_KEY);
+      if (existing && /^[a-f0-9]{32}$/.test(existing)) return existing;
+      var buf = new Uint8Array(16);
+      try { (W.crypto || W.msCrypto).getRandomValues(buf); } catch (e) {
+        for (var i = 0; i < 16; i++) buf[i] = Math.floor(Math.random() * 256);
+      }
+      var hex = '';
+      for (var j = 0; j < 16; j++) hex += ('0' + buf[j].toString(16)).slice(-2);
+      localStorage.setItem(AUTH_DEVICE_KEY, hex);
+      return hex;
+    } catch (e) { return 'nouuid'; }
+  }
+
+  function authFingerprint() {
+    var parts = [];
+    try { parts.push(navigator.userAgent || ''); } catch (e) {}
+    try { parts.push(String(screen.width) + 'x' + String(screen.height) + 'x' + String(screen.colorDepth || 0)); } catch (e) {}
+    try { parts.push(String(devicePixelRatio || 1)); } catch (e) {}
+    try { parts.push(String(Intl.DateTimeFormat().resolvedOptions().timeZone || '')); } catch (e) {}
+    try { parts.push(String(navigator.language || '')); } catch (e) {}
+    try { parts.push(String(navigator.hardwareConcurrency || 0)); } catch (e) {}
+    try { parts.push(String(navigator.platform || '')); } catch (e) {}
+    return sha256Hex(parts.join('|'));
+  }
+
+  function authComputeDeviceId() {
+    var uuid = authDeviceUuid();
+    var fp = authFingerprint();
+    return 'fp_' + uuid + '_' + fp;
+  }
+
+  function authLoadCache() {
+    try {
+      var raw = localStorage.getItem(AUTH_KEY);
+      if (!raw) return null;
+      var d = JSON.parse(raw);
+      if (!d || typeof d !== 'object') return null;
+      return d;
+    } catch (e) { return null; }
+  }
+
+  function authSaveCache(obj) {
+    try { localStorage.setItem(AUTH_KEY, JSON.stringify(obj)); } catch (e) {}
+  }
+
+  function authClearCache() {
+    try { localStorage.removeItem(AUTH_KEY); } catch (e) {}
+  }
+
+  function authReasonText(reason) {
+    var m = {
+      invalid: 'Key tidak ditemukan / salah.',
+      revoked: 'Key sudah dinonaktifkan.',
+      used_on_other_device: 'Key sudah dipakai di HP lain. Hubungi admin.',
+      rate_limited: 'Terlalu banyak percobaan. Tunggu beberapa menit.',
+      missing_params: 'Key kosong.',
+      server_error: 'Server error. Coba lagi.',
+      sheet_not_found: 'Sheet tidak ditemukan (Hubungi admin).',
+      no_keys: 'Belum ada key di database (Hubungi admin).',
+      network: 'Server tidak terjangkau. Cek koneksi internet.'
+    };
+    return m[reason] || ('Gagal: ' + reason);
+  }
+
+  function authVerify(key, interactive) {
+    var deviceId = authComputeDeviceId();
+    AUTH_STATE.key = key;
+    AUTH_STATE.deviceId = deviceId;
+
+    if (!AUTH_URL || AUTH_URL.indexOf('script.google.com') < 0) {
+      AUTH_STATE.status = 'fail';
+      AUTH_STATE.reason = 'no_url';
+      return Promise.resolve({ ok: false, reason: 'no_url' });
+    }
+
+    var body = { key: key, deviceId: deviceId };
+    var url = AUTH_URL;
+
+    return new Promise(function (resolve) {
+      var done = false;
+      var timer = setTimeout(function () {
+        if (done) return; done = true;
+        AUTH_STATE.status = 'fail';
+        AUTH_STATE.reason = 'network';
+        resolve({ ok: false, reason: 'network' });
+      }, 8000);
+
+      try {
+        fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(body)
+        }).then(function (r) { return r.text(); })
+          .then(function (txt) {
+            if (done) return; done = true;
+            clearTimeout(timer);
+            var obj;
+            try { obj = JSON.parse(txt); } catch (e) { obj = null; }
+            if (!obj || typeof obj !== 'object') {
+              AUTH_STATE.status = 'fail';
+              AUTH_STATE.reason = 'bad_response';
+              resolve({ ok: false, reason: 'bad_response' });
+              return;
+            }
+            if (obj.ok) {
+              AUTH_STATE.status = 'ok';
+              AUTH_STATE.reason = '';
+              AUTH_STATE.token = String(obj.token || '');
+              AUTH_STATE.tokenExp = Date.now() + AUTH_TOKEN_TTL_MS;
+              AUTH_STATE.bound = String(obj.bound || '');
+              authSaveCache({
+                key: key, deviceId: deviceId, token: AUTH_STATE.token,
+                tokenExp: AUTH_STATE.tokenExp, bound: AUTH_STATE.bound, savedAt: Date.now()
+              });
+              resolve({ ok: true, token: AUTH_STATE.token, bound: AUTH_STATE.bound });
+            } else {
+              AUTH_STATE.status = 'fail';
+              AUTH_STATE.reason = String(obj.reason || 'unknown');
+              resolve({ ok: false, reason: AUTH_STATE.reason });
+            }
+          })
+          .catch(function () {
+            if (done) return; done = true;
+            clearTimeout(timer);
+            AUTH_STATE.status = 'fail';
+            AUTH_STATE.reason = 'network';
+            resolve({ ok: false, reason: 'network' });
+          });
+      } catch (e) {
+        if (done) return; done = true;
+        clearTimeout(timer);
+        AUTH_STATE.status = 'fail';
+        AUTH_STATE.reason = 'network';
+        resolve({ ok: false, reason: 'network' });
+      }
+    });
+  }
+
+  // Overlay Login Fullscreen
+  function authShowGateOverlay(reason, keyDefault) {
+    try {
+      if (document.getElementById('vanguard-gate')) return;
+      var wrap = document.createElement('div');
+      wrap.id = 'vanguard-gate';
+      wrap.style.cssText = [
+        'position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;',
+        'background:#090e17; font-family:"Segoe UI",Tahoma,system-ui,sans-serif;color:#e2e8f0;'
+      ].join('');
+      wrap.innerHTML =
+        '<div style="width:340px;max-width:92vw;background:rgba(15,23,42,0.98);border:1px solid rgba(6,182,212,0.6);border-radius:14px;padding:24px 20px;box-shadow:0 20px 60px rgba(0,0,0,0.9);">' +
+          '<div style="font-size:16px;font-weight:900;color:#67e8f9;letter-spacing:0.6px;margin-bottom:6px;text-align:center;">VANGUARD ELITE</div>' +
+          '<div style="font-size:11px;color:#94a3b8;margin-bottom:20px;text-align:center;">Sistem Terkunci. Masukkan key akses untuk melanjutkan.</div>' +
+          '<div id="vanguard-gate-msg" style="font-size:11px;color:#fda4af;margin-bottom:10px;min-height:16px;text-align:center;font-weight:bold;">' + (reason || '') + '</div>' +
+          '<input id="vanguard-gate-input" type="text" placeholder="VG-XXXX-XXXX" value="' + (keyDefault || '') + '" ' +
+            'style="width:100%;box-sizing:border-box;padding:12px;border-radius:8px;border:1px solid rgba(6,182,212,0.6);background:#0f172a;color:#f1f5f9;font-size:14px;font-weight:800;letter-spacing:2px;outline:none;text-transform:uppercase;margin-bottom:16px;text-align:center;">' +
+          '<button id="vanguard-gate-btn" style="width:100%;padding:12px 0;border-radius:8px;border:0;background:linear-gradient(135deg,#0891b2,#10b981);color:#fff;font-weight:900;font-size:14px;cursor:pointer;">MASUK</button>' +
+          '<div style="font-size:9px;color:#64748b;margin-top:16px;text-align:center;">1 Key hanya untuk 1 Device. Pastikan koneksi internet lancar.</div>' +
+        '</div>';
+      (document.body || document.documentElement).appendChild(wrap);
+
+      var input = wrap.querySelector('#vanguard-gate-input');
+      var msg = wrap.querySelector('#vanguard-gate-msg');
+      var btn = wrap.querySelector('#vanguard-gate-btn');
+
+      function trySubmit() {
+        var k = String(input.value || '').trim().toUpperCase();
+        if (!/^VG-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(k)) {
+          msg.textContent = 'Format key salah. (Contoh: VG-AB12-CD34)';
+          return;
+        }
+        msg.textContent = 'Memverifikasi...';
+        msg.style.color = '#67e8f9';
+        btn.disabled = true;
+        btn.textContent = 'MEMUAT...';
+
+        authVerify(k, true).then(function (res) {
+          btn.disabled = false;
+          btn.textContent = 'MASUK';
+          msg.style.color = '#fda4af';
+          if (res.ok) {
+            wrap.remove();
+            window.location.reload(); // Reload halaman agar script berjalan bersih
+          } else {
+            msg.textContent = authReasonText(res.reason);
+          }
+        }).catch(function () {
+          btn.disabled = false;
+          btn.textContent = 'MASUK';
+          msg.style.color = '#fda4af';
+          msg.textContent = authReasonText('network');
+        });
+      }
+
+      btn.addEventListener('click', trySubmit);
+      input.addEventListener('keydown', function (e) { if (e.key === 'Enter') trySubmit(); });
+      setTimeout(function () { try { input.focus(); } catch (e) {} }, 100);
+    } catch (e) {}
+  }
+
+  // Cek Login Sebelum Boot
+  (function authBoot() {
+    var cached = authLoadCache();
+    var now = Date.now();
+    var deviceId = authComputeDeviceId();
+
+    if (cached && cached.token && cached.tokenExp > now && cached.deviceId === deviceId) {
+      // Cache valid -> langsung izinkan boot, lalu verifikasi ulang di background
+      AUTH_STATE.status = 'ok';
+      AUTH_STATE.key = cached.key;
+      AUTH_STATE.deviceId = deviceId;
+      AUTH_STATE.token = cached.token;
+      AUTH_STATE.tokenExp = cached.tokenExp;
+      AUTH_STATE.bound = cached.bound || deviceId;
+
+      authVerify(cached.key, false).then(function (res) {
+        if (!res.ok && (res.reason === 'used_on_other_device' || res.reason === 'revoked' || res.reason === 'invalid')) {
+          authClearCache();
+          location.reload();
+        }
+      });
+      return;
+    }
+
+    // Tidak ada cache / expired -> Tampilkan layar kunci
+    var lastKey = (cached && cached.key) ? cached.key : '';
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function () { authShowGateOverlay('', lastKey); });
+    } else {
+      authShowGateOverlay('', lastKey);
+    }
+  })();
+
+  /* ============================================================================
+     1. TIKTOK BADGE
      ============================================================================ */
   function ensureLobbyBadge() {
     try {
-      if (document.getElementById('cigar-lobby-badge')) return;
-      var host = document.body || document.documentElement;
-      if (!host) return;
+      if (document.getElementById('vanguard-lobby-badge')) return;
       var badge = document.createElement('div');
-      badge.id = 'cigar-lobby-badge';
+      badge.id = 'vanguard-lobby-badge';
       badge.style.cssText = [
         'position:fixed;top:10px;left:12px;z-index:999999;pointer-events:none;user-select:none;',
         'display:inline-flex;align-items:center;gap:7px;',
@@ -42,21 +298,25 @@
           'background:linear-gradient(135deg,#06b6d4,#10b981);color:#fff;font-size:11px;font-weight:900;' +
           'box-shadow:0 0 8px rgba(6,182,212,0.5);">♪</span>' +
         '<span style="font-size:11px;font-weight:800;color:#67e8f9;letter-spacing:0.35px;' +
-          'text-shadow:0 0 8px rgba(103,232,249,0.4);">TikTok : @kiianakmamih</span>';
-      host.appendChild(badge);
+          'text-shadow:0 0 8px rgba(103,232,249,0.4);">TikTok : @pbmobile_id</span>';
+      (document.body || document.documentElement).appendChild(badge);
     } catch (e) {}
   }
-  ensureLobbyBadge();
+  
+  // Hanya tampilkan badge jika sudah login (Auth OK)
+  if (AUTH_STATE.status === 'ok') {
+     ensureLobbyBadge();
+  }
 
   /* ============================================================================
      2. CORE ENGINE
      ============================================================================ */
   function bootCore() {
-    var V = '1.0.1';
-    var BRAND = 'CIGAR ULTIMATE';
+    var V = '2.4.0';
+    var BRAND = 'VANGUARD ELITE';
 
     function log() {
-      try { console.log.apply(console, ['[CIGAR]'].concat([].slice.call(arguments))); } catch (e) {}
+      try { console.log.apply(console, ['[VANGUARD]'].concat([].slice.call(arguments))); } catch (e) {}
     }
 
     /* --------------------------------------------------------------------------
@@ -297,7 +557,7 @@
     } catch (e) {}
 
     /* --------------------------------------------------------------------------
-       2.3 UTILITAS UMUM, GAME INSTANCE & CANVAS HELPER
+       2.3 UTILITAS UMUM
        -------------------------------------------------------------------------- */
     function game() {
       try {
@@ -359,7 +619,7 @@
     }
 
     /* --------------------------------------------------------------------------
-       2.4 KALKULASI TARGET, HITBOX & LINE OF SIGHT
+       2.4 KALKULASI TARGET
        -------------------------------------------------------------------------- */
     var _hpOut = { x: 0, y: 0, z: 0 };
     var _leadOut = { x: 0, y: 0, z: 0 };
@@ -470,7 +730,7 @@
 
     function hasLineOfSight(g, cam, hp) {
       try {
-        if (!g || typeof g.cast !== 'function' || !cam || !cam.position) return true;
+        if (typeof g.cast !== 'function') return true;
         var eye = cam.position;
         var dx = hp.x - eye.x, dy = hp.y - eye.y, dz = hp.z - eye.z;
         var dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
@@ -546,7 +806,7 @@
     }
 
     /* --------------------------------------------------------------------------
-       2.5 INPUT MOUSE, TOUCH & YAW/PITCH LOCK
+       2.5 INPUT MOUSE & YAW/PITCH
        -------------------------------------------------------------------------- */
     function aimWrite(dx, dy) {
       AIM.dx += dx;
@@ -631,7 +891,7 @@
       if (document.hidden) {
         fireHeld = 0; st.fire = 0; AB.freshFire = 0;
         if (typeof FLY !== 'undefined') { FLY.jumpHeld = 0; FLY.crouchHeld = 0; }
-        if (silentHolding || holding) up();
+        if (silentHolding) up();
       }
     });
 
@@ -662,7 +922,7 @@
     addEventListener('touchcancel', touchEnd, true);
 
     /* --------------------------------------------------------------------------
-       2.6 MOVEMENT & SURVIVAL (FLY, NOCLIP, GODMODE, RESPAWN)
+       2.6 MOVEMENT & SURVIVAL
        -------------------------------------------------------------------------- */
     var FLY = { on: 0, mode: 'hover', jumpHeld: 0, crouchHeld: 0, riseSpeed: 7, maxHeight: 35, groundY: null, hoverY: null };
     var FLYB = { on: 1, last: 0, interval: 16, smooth: 1.0 };
@@ -670,7 +930,7 @@
     addEventListener('blur', function () {
       fireHeld = 0; st.fire = 0; AB.freshFire = 0;
       FLY.jumpHeld = 0; FLY.crouchHeld = 0;
-      if (silentHolding || holding) up();
+      if (silentHolding) up();
     });
 
     function flyPosObj(s) {
@@ -1042,7 +1302,7 @@
     }
 
     /* --------------------------------------------------------------------------
-       2.8 WEAPON & SILENT AIM (FIXED AUTO-SHOOT SAAT NGEKER)
+       2.8 WEAPON & SILENT AIM
        -------------------------------------------------------------------------- */
     var PR = { on: 0, ms: 120 };
     var RF = { on: 0, antiSpam: 1, lastFireAt: 0, minGapMs: 65 };
@@ -1217,43 +1477,9 @@
       fovDeg: 35,
       minDist: 1.5,
       target: 'head',
-      lastShotAt: 0,
-      requireScope: 0,
-      maxCrosshairDeg: 10,
-      graceMs: 90
+      lastShotAt: 0
     };
-    var SA_HEAD = { x: 0, y: 0, z: 0, bot: null, validUntil: 0, aimAngleDeg: 999 };
-    var _scopeState = { active: false, since: 0, rmbDown: false };
-
-    addEventListener('mousedown', function (e) {
-      if (e.button === 2) _scopeState.rmbDown = true;
-    }, true);
-    addEventListener('mouseup', function (e) {
-      if (e.button === 2) _scopeState.rmbDown = false;
-    }, true);
-
-    function isScoping(g, p, s) {
-      try {
-        if (_scopeState.rmbDown) return true;
-        if (s && (s.scoped || s.zooming || s.aiming || s.isAim || s.isScope)) return true;
-        if (p && (p.scoped || p.zooming || p.aiming || p.isAim || p.isScope)) return true;
-        if (p && typeof p.scopeT === 'number' && p.scopeT > 0.08) return true;
-        if (g && g.camera && typeof g.camera.fov === 'number' && g.camera.fov < (O.fov - 4)) return true;
-      } catch (e) {}
-      return false;
-    }
-
-    function updateScopeGrace(g, p, s, now) {
-      var sc = isScoping(g, p, s);
-      if (sc && !_scopeState.active) {
-        _scopeState.active = true;
-        _scopeState.since = now;
-      } else if (!sc && _scopeState.active) {
-        _scopeState.active = false;
-        _scopeState.since = 0;
-      }
-      return sc;
-    }
+    var SA_HEAD = { x: 0, y: 0, z: 0, bot: null, validUntil: 0 };
 
     function saGetPoint(bot, fromPt) {
       if (!bot) return null;
@@ -1274,17 +1500,9 @@
     }
 
     function saUpdateHead(g) {
-      if (!SA.on || !g || !g.P || !g.P.s || g.P.s.dead) {
-        SA_HEAD.bot = null;
-        SA_HEAD.aimAngleDeg = 999;
-        return;
-      }
+      if (!SA.on || !g || !g.P || !g.P.s || g.P.s.dead) { SA_HEAD.bot = null; return; }
       var s = g.P.s, cam = g.camera, list = g.bots || [];
-      if (!cam || !cam.matrixWorld) {
-        SA_HEAD.bot = null;
-        SA_HEAD.aimAngleDeg = 999;
-        return;
-      }
+      if (!cam || !cam.matrixWorld) { SA_HEAD.bot = null; return; }
 
       var me = cam.matrixWorld.elements;
       var cx = me[12], cy = me[13], cz = me[14];
@@ -1292,7 +1510,7 @@
       var fx = -Math.sin(yaw) * cp, fy = Math.sin(pitch), fz = -Math.cos(yaw) * cp;
       var cosFov = Math.cos(clamp(SA.fovDeg, 1, 180) * Math.PI / 180);
 
-      var best = null, bestScore = 1e9, bestDeg = 999;
+      var best = null, bestScore = 1e9;
 
       for (var i = 0; i < list.length; i++) {
         var p = list[i];
@@ -1305,31 +1523,15 @@
         var dot = (dx * fx + dy * fy + dz * fz) / d;
         if (dot < cosFov) continue;
         var ang = Math.acos(clamp(dot, -1, 1));
-        var deg = ang * 57.2957795;
         var score = ang + d * 0.001;
-        if (score < bestScore) {
-          bestScore = score;
-          best = p;
-          bestDeg = deg;
-        }
+        if (score < bestScore) { bestScore = score; best = p; }
       }
 
-      if (!best) {
-        SA_HEAD.bot = null;
-        SA_HEAD.aimAngleDeg = 999;
-        return;
-      }
+      if (!best) { SA_HEAD.bot = null; return; }
       var targetPt = saGetPoint(best, C);
-      if (!targetPt) {
-        SA_HEAD.bot = null;
-        SA_HEAD.aimAngleDeg = 999;
-        return;
-      }
-      SA_HEAD.x = targetPt.x;
-      SA_HEAD.y = targetPt.y;
-      SA_HEAD.z = targetPt.z;
+      if (!targetPt) { SA_HEAD.bot = null; return; }
+      SA_HEAD.x = targetPt.x; SA_HEAD.y = targetPt.y; SA_HEAD.z = targetPt.z;
       SA_HEAD.bot = best;
-      SA_HEAD.aimAngleDeg = bestDeg;
       SA_HEAD.validUntil = performance.now() + 250;
     }
 
@@ -1374,26 +1576,16 @@
     }
 
     function saFireStep(g) {
-      var p = g && g.P;
-      var s = p && p.s;
+      var s = g && g.P && g.P.s;
       var now = performance.now();
-      var scoping = updateScopeGrace(g, p, s, now);
-
-      var graceOk = !scoping || (now - _scopeState.since >= SA.graceMs);
-      var scopeOk = !SA.requireScope || scoping;
-      var crosshairOk = SA_HEAD.aimAngleDeg <= SA.maxCrosshairDeg;
 
       var hasValidTarget =
         SA.on &&
         SA_HEAD.bot &&
         s && !s.dead &&
-        now <= SA_HEAD.validUntil &&
-        saCanFire(g) &&
         isHumanEnemy(SA_HEAD.bot, s) &&
-        hasLineOfSight(g, g.camera, { x: SA_HEAD.x, y: SA_HEAD.y, z: SA_HEAD.z }) &&
-        graceOk &&
-        scopeOk &&
-        crosshairOk;
+        now <= SA_HEAD.validUntil &&
+        saCanFire(g);
 
       if (!hasValidTarget) {
         releaseSilentFire(g);
@@ -1473,7 +1665,7 @@
     }
 
     /* --------------------------------------------------------------------------
-       2.9 WEBSOCKET FILTER & ANTI-KICK (KICK-DROP + AUTO-RECONNECT)
+       2.9 WEBSOCKET FILTER & ANTI-KICK
        -------------------------------------------------------------------------- */
     function pbOut(d) {
       if (typeof d === 'string' && (d.indexOf('acflag') >= 0 || d.indexOf('ac\\u0066lag') >= 0)) return null;
@@ -1565,7 +1757,7 @@
     })();
 
     /* --------------------------------------------------------------------------
-       2.10 ESP & VISUAL OVERLAYS (BOX, BONE, RADAR, TRACER, POV RING)
+       2.10 ESP & VISUAL OVERLAYS
        -------------------------------------------------------------------------- */
     var E = { on: 1, nameOn: 0, wrap: null, slots: [], last: 0, n: 0, v: null };
     var HPO = { on: 0 };
@@ -2098,11 +2290,6 @@
 
       if (!self.__pbYawLocked) lockYawPitch(self);
 
-      if (!cam || !cam.matrixWorld || !cam.matrixWorld.elements) {
-        aimFlush(g);
-        return;
-      }
-
       var m = cam.matrixWorld.elements;
       C.x = m[12]; C.y = m[13]; C.z = m[14];
 
@@ -2137,7 +2324,7 @@
         } catch (e) {}
       }
 
-      var list = g.bots || [];
+      var list = g.bots;
       var best = null, bestPt = null, bestA = 1e9, bestD = 1e9;
       var myTeam = self.team, n = 0, en = 0;
 
@@ -2171,7 +2358,6 @@
 
       var wantAcquire = P.aimbotOn && (AB.freshFire || (fireHeld > 0 && now >= AB.lockUntil));
       if (!wantAcquire && !P.autoFire && !fireHeld) {
-        if (holding && !silentHolding) up();
         st.bots = n;
         aimFlush(g);
         return;
@@ -2206,7 +2392,6 @@
         var curAp = getTargetPointLead(AB.target.bot, C) || AB.target.p;
         if (!canAimbotTarget(g, cam, AB.target.bot, curAp)) {
           AB.target = null; AB.lockUntil = 0; AIMLOCK.locked = false; st.aimbot = 0;
-          if (holding && !silentHolding) up();
           aimFlush(g);
           return;
         }
@@ -2253,11 +2438,7 @@
       var fireTarget = (doAimbot && AB.target) ? AB.target.bot : best;
       var firePoint = (doAimbot && AB.target) ? AB.target.p : bestPt;
       if (!fireTarget || !firePoint) { aimFlush(g); return; }
-
-      if (!fireHeld && P.autoFire && !hasLineOfSightThrottled(g, cam, fireTarget, firePoint)) {
-        aimFlush(g);
-        return;
-      }
+      if (!doAimbot && !FL.wallbang && !hasLineOfSightThrottled(g, cam, fireTarget, firePoint)) { aimFlush(g); return; }
 
       var hit = null;
       try { hit = hitTestSafe(fireTarget, C, F, P.reach); } catch (e) {}
@@ -2299,7 +2480,7 @@
     }, 120);
 
     /* --------------------------------------------------------------------------
-       2.12 PUBLIC INTERNAL APIS (__pb, __pbvis, __pbqc, __pbx)
+       2.12 PUBLIC INTERNAL APIS
        -------------------------------------------------------------------------- */
     var PB_API = {
       state: function () {
@@ -2338,7 +2519,7 @@
       aimbotHold: function (v) { if (typeof v === 'number' && v >= 50) { P.aimbotHoldMs = v; try { localStorage.setItem('ir_aimbot_hold', String(v)); } catch (e) {} } return P.aimbotHoldMs; },
       bulletSpeed: function (v) { if (typeof v === 'number' && v > 0) { P.bulletSpeed = v; try { localStorage.setItem('ir_bullet_speed', String(v)); } catch (e) {} } return P.bulletSpeed; },
       leadFactor: function (v) { if (typeof v === 'number' && v >= 0) { P.leadFactor = v; try { localStorage.setItem('ir_lead', String(v)); } catch (e) {} } return P.leadFactor; },
-      autoFire: function (on) { P.autoFire = on ? 1 : 0; if (!P.autoFire && holding && !silentHolding) up(); return P.autoFire; },
+      autoFire: function (on) { P.autoFire = on ? 1 : 0; return P.autoFire; },
       sens: function (v) { if (typeof v === 'number' && v > 0) { O.sens = v; try { var o = JSON.parse(localStorage.getItem('pbweb_opts') || '{}'); o.sens = v; localStorage.setItem('pbweb_opts', JSON.stringify(o)); } catch (e) {} } return O.sens; },
       fov: function (v) { if (typeof v === 'number' && v > 0) { O.fov = v; try { var o = JSON.parse(localStorage.getItem('pbweb_opts') || '{}'); o.fov = v; localStorage.setItem('pbweb_opts', JSON.stringify(o)); } catch (e) {} } return O.fov; },
       invert: function (on) { O.invert = !!on; try { var o = JSON.parse(localStorage.getItem('pbweb_opts') || '{}'); o.invert = O.invert; localStorage.setItem('pbweb_opts', JSON.stringify(o)); } catch (e) {} return O.invert; },
@@ -2391,15 +2572,6 @@
         SA.tapShot = on ? 1 : 0;
         if (!SA.tapShot && !SA.autoShoot) releaseSilentFire();
         return SA.tapShot;
-      },
-      silentRequireScope: function (on) {
-        SA.requireScope = on ? 1 : 0;
-        if (SA.requireScope && !silentHolding) releaseSilentFire();
-        return SA.requireScope;
-      },
-      silentMaxAngle: function (deg) {
-        if (typeof deg === 'number' && deg >= 1 && deg <= 180) SA.maxCrosshairDeg = deg;
-        return SA.maxCrosshairDeg;
       },
       silentTarget: function (t) { if (t === 'head' || t === 'body') SA.target = t; return SA.target; },
       silentFov: function (deg) { if (typeof deg === 'number' && deg > 0 && deg <= 180) SA.fovDeg = deg; return SA.fovDeg; },
@@ -2494,6 +2666,24 @@
           refs: { renderer: !!PERF.refRenderer, scene: !!PERF.refScene, camera: !!PERF.refCamera }
         };
       },
+      authSt: function () {
+        return {
+          status: AUTH_STATE.status, reason: AUTH_STATE.reason,
+          key: AUTH_STATE.key, deviceId: AUTH_STATE.deviceId,
+          hasToken: !!AUTH_STATE.token, tokenExp: AUTH_STATE.tokenExp,
+          bound: AUTH_STATE.bound, url: AUTH_URL
+        };
+      },
+      authReset: function () {
+        try { authClearCache(); } catch (e) {}
+        try { localStorage.removeItem(AUTH_DEVICE_KEY); } catch (e) {}
+        AUTH_STATE = { status: 'pending', reason: '', key: '', deviceId: '', token: '', tokenExp: 0, bound: '' };
+        authShowGateOverlay('', '');
+        return 'reset';
+      },
+      authSet: function (key) {
+        return authVerify(String(key || '').trim().toUpperCase(), true);
+      },
       panic: function () {
         try {
           PERF.on = 0; perfRestoreRefs();
@@ -2508,8 +2698,7 @@
         return {
           pred: PR.on, rapid: RF.on, rapidAntiSpam: RF.antiSpam,
           instScope: IS.on, trig: TB.on, silent: SA.on, silentAutoShoot: SA.autoShoot,
-          silentTapShot: SA.tapShot, silentRequireScope: SA.requireScope,
-          silentMaxAngle: SA.maxCrosshairDeg, silentTarget: SA.target, silentFov: SA.fovDeg,
+          silentTapShot: SA.tapShot, silentTarget: SA.target, silentFov: SA.fovDeg,
           silentMinDist: SA.minDist,
           lob: SL.on, respawn: IR.on, radar: RD.on, hpo: HPO.on, fovc: FC.on, tracer: TR.on,
           wallbang: FL.wallbang, infAmmo: FL.infAmmo, noRecoil: FL.noRecoil,
@@ -2520,7 +2709,7 @@
           silentNade: SN.on, silentNadeSide: SN.side, silentNadeMode: SN.mode,
           silentNadeTarget: SN.targetName, silentNadeBypass: SNB.on, espName: E.nameOn,
           perf: PERF.on, perfLevel: PERF.level,
-          saHead: SA_HEAD.bot ? { x: +SA_HEAD.x.toFixed(2), y: +SA_HEAD.y.toFixed(2), z: +SA_HEAD.z.toFixed(2), name: SA_HEAD.bot.name, hp: SA_HEAD.bot.hp, aimDeg: +SA_HEAD.aimAngleDeg.toFixed(1) } : null
+          saHead: SA_HEAD.bot ? { x: +SA_HEAD.x.toFixed(2), y: +SA_HEAD.y.toFixed(2), z: +SA_HEAD.z.toFixed(2), name: SA_HEAD.bot.name, hp: SA_HEAD.bot.hp } : null
         };
       }
     };
@@ -2540,7 +2729,7 @@
     /* --------------------------------------------------------------------------
        2.13 SETTINGS PERSISTENCE
        -------------------------------------------------------------------------- */
-    var SETTINGS_KEY = 'cigar_settings_v4';
+    var SETTINGS_KEY = 'vanguard_settings_v4';
     var _saveTimer = 0;
 
     function saveSettings() {
@@ -2559,7 +2748,6 @@
           rapid: xs.rapid, rapidAntiSpam: xs.rapidAntiSpam, instScope: xs.instScope,
           trig: xs.trig, silent: xs.silent,
           silentAutoShoot: xs.silentAutoShoot, silentTapShot: xs.silentTapShot,
-          silentRequireScope: xs.silentRequireScope, silentMaxAngle: xs.silentMaxAngle,
           silentTarget: xs.silentTarget, silentFov: xs.silentFov, silentMinDist: xs.silentMinDist,
           respawn: xs.respawn, radar: xs.radar, hpo: xs.hpo, fovc: xs.fovc, tracer: xs.tracer,
           wallbang: xs.wallbang, infAmmo: xs.infAmmo, noRecoil: xs.noRecoil,
@@ -2616,8 +2804,6 @@
         if (d.silent != null) PBX_API.silent(d.silent);
         if (d.silentAutoShoot != null) PBX_API.silentAutoShoot(d.silentAutoShoot);
         if (d.silentTapShot != null) PBX_API.silentTapShot(d.silentTapShot);
-        if (d.silentRequireScope != null) PBX_API.silentRequireScope(d.silentRequireScope);
-        if (d.silentMaxAngle > 0) PBX_API.silentMaxAngle(d.silentMaxAngle);
         if (d.silentTarget) PBX_API.silentTarget(d.silentTarget);
         if (d.silentFov > 0) PBX_API.silentFov(d.silentFov);
         if (d.silentMinDist >= 0) PBX_API.silentMinDist(d.silentMinDist);
@@ -2662,12 +2848,10 @@
     setInterval(saveSettings, 5000);
 
     /* ============================================================================
-       3. UI SYSTEM (CYBER CYAN THEME & FULL DRAGGABLE PANEL)
+       3. UI SYSTEM
        ============================================================================ */
     (function pbUI() {
       if (W.__pbUI) return;
-      var host = document.body || document.documentElement;
-      if (!host) return;
       W.__pbUI = 1;
 
       if (!document.querySelector('link[data-fa]')) {
@@ -2758,7 +2942,7 @@
         var t = document.querySelector('.fk-toast');
         if (!t) {
           t = mk('div', 'fk-toast');
-          (document.body || document.documentElement).appendChild(t);
+          document.body.appendChild(t);
         }
         t.textContent = msg;
         t.classList.add('show');
@@ -2776,7 +2960,7 @@
       ];
 
       var root = mk('div', 'fk expanded');
-      root.id = 'cigar-panel';
+      root.id = 'vanguard-panel';
 
       var rail = mk('div', 'fk-rail');
       TABS.forEach(function (t, i) {
@@ -2795,7 +2979,7 @@
 
       var bodyCol = mk('div', 'fk-body-col');
       var header = mk('div', 'fk-h');
-      header.innerHTML = '<span class="dot"></span><span class="title">CIGAR ULTIMATE</span><span class="v">v' + V + '</span>';
+      header.innerHTML = '<span class="dot"></span><span class="title">VANGUARD ELITE</span><span class="v">v' + V + '</span>';
       var collapseBtn = mk('div', 'fk-toggle', '<i class="fa-solid fa-chevron-up"></i>');
       header.appendChild(collapseBtn);
       bodyCol.appendChild(header);
@@ -2815,11 +2999,11 @@
       root.appendChild(bodyCol);
 
       var tabbar = mk('div', 'fk-tabbar',
-        '<span class="fk-tb-title"><span class="dot"></span>CIGAR ULTIMATE</span>' +
+        '<span class="fk-tb-title"><span class="dot"></span>VANGUARD ELITE</span>' +
         '<span class="fk-tb-open"><i class="fa-solid fa-chevron-down"></i></span>');
       root.appendChild(tabbar);
 
-      host.appendChild(root);
+      document.body.appendChild(root);
 
       collapseBtn.addEventListener('click', function (e) {
         e.stopPropagation();
@@ -2945,7 +3129,7 @@
         r2.appendChild(sw(function () { return P.aimbotOn; }, function (v) { PB_API.aimbot(v); }));
         pg.appendChild(r2);
 
-        var r3 = row('Auto Fire', 'Tembak otomatis saat target terlihat');
+        var r3 = row('Auto Fire', 'Tembak otomatis tanpa tap');
         r3.appendChild(sw(function () { return P.autoFire; }, function (v) { PB_API.autoFire(v); }));
         pg.appendChild(r3);
 
@@ -3080,22 +3264,13 @@
         r1.appendChild(sw(function () { return SA.on; }, function (v) { PBX_API.silent(v); }));
         pg.appendChild(r1);
 
-        var r2 = row('Auto Shoot', 'Tembak otomatis saat crosshair pas');
+        var r2 = row('Auto Shoot', 'Tembak otomatis saat target valid');
         r2.appendChild(sw(function () { return SA.autoShoot; }, function (v) { PBX_API.silentAutoShoot(v); }));
         pg.appendChild(r2);
 
-        var r3 = row('Tap Shot', 'Tap cepat saat crosshair pas');
+        var r3 = row('Tap Shot', 'Tap cepat');
         r3.appendChild(sw(function () { return SA.tapShot; }, function (v) { PBX_API.silentTapShot(v); }));
         pg.appendChild(r3);
-
-        var rScope = row('Only On Scope', 'Auto shoot hanya saat ngeker/scope');
-        rScope.appendChild(sw(function () { return SA.requireScope; }, function (v) { PBX_API.silentRequireScope(v); }));
-        pg.appendChild(rScope);
-
-        pg.appendChild(slider('Max Aim °', 2, 35, 1,
-          function () { return SA.maxCrosshairDeg; },
-          function (v) { PBX_API.silentMaxAngle(v); },
-          function (v) { return v + '°'; }));
 
         pg.appendChild(select('Silent Target',
           [{ v: 'head', t: 'Head' }, { v: 'body', t: 'Body' }],
@@ -3217,6 +3392,25 @@
         rp2.appendChild(pb1);
         pg.appendChild(rp2);
 
+        pg.appendChild(sec('Auth', 'fa-key'));
+        var ra1 = row('Auth Status', 'Lihat status key');
+        var raBtn = btn('STATUS', function () {
+          var s = PBX_API.authSt();
+          toast(s.status.toUpperCase() + (s.reason ? ' · ' + s.reason : '') + (s.hasToken ? ' · token' : ''));
+        });
+        ra1.appendChild(raBtn);
+        pg.appendChild(ra1);
+
+        var ra2 = row('Auth Reset', 'Ganti key / lepas device');
+        var raBtn2 = btn('RESET KEY', function () {
+          PBX_API.authReset();
+          toast('Key direset, isi ulang');
+        });
+        raBtn2.style.background = 'linear-gradient(135deg,#f59e0b,#d97706)';
+        raBtn2.style.borderColor = 'transparent';
+        ra2.appendChild(raBtn2);
+        pg.appendChild(ra2);
+
         pg.appendChild(sec('Lainnya', 'fa-wrench'));
         var r10 = row('Lob', 'Mode lempar');
         r10.appendChild(sw(function () { return SL.on; }, function (v) { PBX_API.lob(v); }));
@@ -3238,5 +3432,12 @@
     requestAnimationFrame(mainLoop);
   }
 
-  try { bootCore(); } catch (e) { try { console.error('[CIGAR] boot fail', e); } catch (_) {} }
+  try {
+    // HANYA JALANKAN CHEAT JIKA AUTH BERHASIL
+    if (AUTH_STATE.status === 'ok') {
+      bootCore();
+    } else {
+      console.log('[VANGUARD] Cheat diblokir. Menunggu key valid.');
+    }
+  } catch (e) { try { console.error('[VANGUARD] boot fail', e); } catch (_) {} }
 })(typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
