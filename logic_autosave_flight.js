@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         PBWEB - CIGAR ELITE
 // @namespace    cigarelite.local
-// @version      1.0.0
-// @description  CIGAR ELITE (Cigar Hard-Lock Aimbot + Silent Aim POV + Auto POV Circle + ESP + 360 Silent Aim + Anti-Kick + Performance Mode)
+// @version      1.0.1
+// @description  CIGAR ELITE (Hyperion Hard-Lock Aimbot + Silent Aim POV + ESP + Anti Flash/Smoke + 360 Silent Aim + Anti-Kick + Performance Mode)
 // @match        *://pbmobile.app/*
 // @match        *://*.pbmobile.app/*
 // @run-at       document-start
@@ -52,7 +52,7 @@
      2. CORE ENGINE
      ============================================================================ */
   function bootCore() {
-    var V = '1.0.0';
+    var V = '1.0.1';
     var BRAND = 'CIGAR ELITE';
 
     function log() {
@@ -209,7 +209,7 @@
     })();
 
     /* --------------------------------------------------------------------------
-       2.2 STATE & KONFIGURASI GLOBAL (CIGAR HARD-LOCK + SILENT AIM POV)
+       2.2 STATE & KONFIGURASI GLOBAL (HYPERION HARD-LOCK + SILENT AIM POV)
        -------------------------------------------------------------------------- */
     var HIDDEN = { pb: null, pbvis: null, pbnade: null, pbqc: null, pbx: null };
 
@@ -242,7 +242,9 @@
       antiKick: 1,
       noFall: 1,
       infNade: 1,
-      infNadeMax: 99
+      infNadeMax: 99,
+      noFlash: 1,
+      noSmoke: 1
     };
 
     var G = null;
@@ -859,6 +861,178 @@
     var IR = { on: 0, at: 0 };
 
     /* --------------------------------------------------------------------------
+       2.6b ANTI-FLASHBANG & ANTI-SMOKE ENGINE
+       -------------------------------------------------------------------------- */
+    var ANTI_FX = {
+      hiddenObjs: [],
+      hiddenDom: []
+    };
+
+    function restoreFlashDom() {
+      if (!ANTI_FX.hiddenDom.length) return;
+      for (var i = 0; i < ANTI_FX.hiddenDom.length; i++) {
+        try {
+          var item = ANTI_FX.hiddenDom[i];
+          if (item && item.el) {
+            item.el.style.display = item.display;
+            item.el.style.opacity = item.opacity;
+            item.el.__pbFlashHidden = 0;
+          }
+        } catch (e) {}
+      }
+      ANTI_FX.hiddenDom = [];
+    }
+
+    function restoreSmokeObjs() {
+      if (!ANTI_FX.hiddenObjs.length) return;
+      for (var i = 0; i < ANTI_FX.hiddenObjs.length; i++) {
+        try {
+          var o = ANTI_FX.hiddenObjs[i];
+          if (o) {
+            o.visible = true;
+            o.__pbSmokeHidden = 0;
+          }
+        } catch (e) {}
+      }
+      ANTI_FX.hiddenObjs = [];
+    }
+
+    function isProtectedSceneNode(o, g) {
+      if (!o) return true;
+      if (o.isCamera || o.isLight) return true;
+      var s = g && g.P && g.P.s;
+      if (s && (o === s.obj || o === s.fpObj || o === s.hands)) return true;
+      var bots = g && g.bots;
+      if (bots) {
+        for (var i = 0; i < bots.length; i++) {
+          if (bots[i] && bots[i].obj === o) return true;
+        }
+      }
+      return false;
+    }
+
+    function isSmokeObject(o) {
+      if (!o || o.isCamera || o.isLight) return false;
+      var nm = String(o.name || '').toLowerCase();
+      if (/(smoke|fumo|fumaca|fumaça|gas|cloud|fog_cloud|puff)/.test(nm)) return true;
+
+      var ud = o.userData;
+      if (ud) {
+        var uType = String(ud.type || ud.kind || ud.fx || ud.name || '').toLowerCase();
+        if (/(smoke|fumo|fumaca|gas|cloud)/.test(uType)) return true;
+      }
+
+      var mat = o.material;
+      if (mat && !Array.isArray(mat)) {
+        var mName = String(mat.name || '').toLowerCase();
+        var mapName = String((mat.map && mat.map.name) || '').toLowerCase();
+        var mapSrc = String((mat.map && mat.map.image && (mat.map.image.src || mat.map.image.currentSrc)) || '').toLowerCase();
+        if (/(smoke|fumo|fumaca|puff|cloud)/.test(mName + ' ' + mapName + ' ' + mapSrc)) return true;
+        if ((o.isSprite || o.isPoints) && mat.transparent && mat.depthWrite === false && mat.opacity > 0.15) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function antiFlashTick(g) {
+      if (!FL.noFlash) {
+        restoreFlashDom();
+        return;
+      }
+
+      var p = g && g.P;
+      var s = p && p.s;
+      var flashKeys = [
+        'flash', 'flashT', 'flashTime', 'flashTimer', 'flashAlpha', 'flashDur', 'flashDuration',
+        'blind', 'blindT', 'blindTime', 'blindTimer', 'blindAlpha', 'stun', 'stunT'
+      ];
+      [s, p, g].forEach(function (target) {
+        if (!target) return;
+        for (var i = 0; i < flashKeys.length; i++) {
+          var k = flashKeys[i];
+          try {
+            if (typeof target[k] === 'number' && target[k] > 0) target[k] = 0;
+            else if (typeof target[k] === 'boolean' && target[k] === true) target[k] = false;
+          } catch (e) {}
+        }
+      });
+
+      try {
+        var nodes = document.querySelectorAll('[id*="flash" i], [class*="flash" i], [id*="blind" i], [class*="blind" i], div[style*="255, 255, 255"], div[style*="255,255,255"], div[style*="#fff"]');
+        for (var j = 0; j < nodes.length; j++) {
+          var el = nodes[j];
+          if (!el || el.__pbFlashHidden) continue;
+          if (el.closest && (el.closest('#cigar-panel') || el.closest('#cigar-lobby-badge'))) continue;
+          if (el.getAttribute && el.getAttribute('data-pb')) continue;
+
+          var cs = getComputedStyle(el);
+          if (cs.display === 'none' || parseFloat(cs.opacity || '1') <= 0.01) continue;
+          var r = el.getBoundingClientRect();
+          if (r.width >= innerWidth * 0.7 && r.height >= innerHeight * 0.7 && cs.pointerEvents === 'none') {
+            var bg = String(cs.backgroundColor || '').replace(/\s+/g, '');
+            if (bg.indexOf('rgb(255,255,255)') === 0 || bg.indexOf('rgba(255,255,255,') === 0 || /flash|blind/i.test((el.id || '') + ' ' + (el.className || ''))) {
+              ANTI_FX.hiddenDom.push({ el: el, display: el.style.display, opacity: el.style.opacity });
+              el.__pbFlashHidden = 1;
+              el.style.display = 'none';
+              el.style.opacity = '0';
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
+    function antiSmokeTick(g) {
+      if (!FL.noSmoke) {
+        restoreSmokeObjs();
+        return;
+      }
+
+      try {
+        if (g && Array.isArray(g.nades)) {
+          for (var i = 0; i < g.nades.length; i++) {
+            var n = g.nades[i];
+            if (!n) continue;
+            var kind = String(n.kind || n.type || n.id || (n.w && (n.w.kind || n.w.id || n.w.name)) || '').toLowerCase();
+            if (/(smoke|fumo|fumaca)/.test(kind)) {
+              if (typeof n.smokeT === 'number') n.smokeT = 0;
+              if (typeof n.life === 'number' && n.active) n.life = 0;
+              if (n.cloud && n.cloud.visible) {
+                n.cloud.visible = false;
+                if (!n.cloud.__pbSmokeHidden) {
+                  n.cloud.__pbSmokeHidden = 1;
+                  ANTI_FX.hiddenObjs.push(n.cloud);
+                }
+              }
+              if (n.mesh && n.mesh.visible && n.detonated) {
+                n.mesh.visible = false;
+                if (!n.mesh.__pbSmokeHidden) {
+                  n.mesh.__pbSmokeHidden = 1;
+                  ANTI_FX.hiddenObjs.push(n.mesh);
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {}
+
+      var scene = g && g.scene;
+      if (scene && typeof scene.traverse === 'function') {
+        try {
+          scene.traverse(function (o) {
+            if (!o || o.__pbSmokeHidden || !o.visible) return;
+            if (isProtectedSceneNode(o, g)) return;
+            if (isSmokeObject(o)) {
+              o.visible = false;
+              o.__pbSmokeHidden = 1;
+              ANTI_FX.hiddenObjs.push(o);
+            }
+          });
+        } catch (e) {}
+      }
+    }
+
+    /* --------------------------------------------------------------------------
        2.7 SILENT NADE & UNLIMITED GRENADE
        -------------------------------------------------------------------------- */
     var SN = { on: 0, side: 'enemy', mode: 'aim', targetName: '', requireLOS: 0, homing: 1, lockedTarget: null, pinnedNameBot: null, nadeCount: 0, lastNadeAt: 0 };
@@ -1188,7 +1362,9 @@
       fovDeg: 360,
       minDist: 0.5,
       target: 'head',
-      lastShotAt: 0
+      lastShotAt: 0,
+      tapDown: false,
+      tapNextAt: 0
     };
     var SA_HEAD = { x: 0, y: 0, z: 0, bot: null, validUntil: 0 };
 
@@ -1395,22 +1571,9 @@
       SA_HEAD.validUntil = performance.now() + 300;
     }
 
-    function forceResetCycleTimers(p) {
-      if (!p) return;
-      ['nextShot', 'chamberT', 'cockT', 'boltT', 'pumpT', 'cockingT', 'reloading', 'swapEnd'].forEach(function (k) {
-        if (typeof p[k] === 'number' && p[k] > 0) p[k] = 0;
-      });
-      try {
-        var w = p.W;
-        if (w) {
-          ['nextShot', 'chamberT', 'cockT', 'boltT', 'pumpT', 'cockingT', 'reloading', 'swapEnd'].forEach(function (k) {
-            if (typeof w[k] === 'number' && w[k] > 0) w[k] = 0;
-          });
-        }
-      } catch (e) {}
-    }
-
     function releaseSilentFire(g) {
+      SA.tapDown = false;
+      SA.tapNextAt = 0;
       if (!silentHolding) return;
       try {
         var curG = g || G || game();
@@ -1427,6 +1590,7 @@
       var w = p && p.W;
       if (!w) return false;
       if (w.melee || w.c4 || w.grenade) return false;
+      if (typeof p.ammo === 'number' && p.ammo <= 0) return false;
       var now = performance.now();
       if (typeof p.nextShot === 'number' && p.nextShot > now + 500) return false;
       if (typeof p.reloading === 'number' && p.reloading > 0) return false;
@@ -1452,31 +1616,70 @@
         return;
       }
 
+      var w = g.P && g.P.W;
+      var isFullAutoWeapon = !!(w && (w.auto === true || w.fullAuto === true || w.automatic === true));
+
+      // MODE 1: TAP SHOT (True Tap-Tap / Klik-klik cepat tanpa menahan)
       if (SA.tapShot) {
-        forceResetCycleTimers(g.P);
-        if (now < SA.lastShotAt + 22) return;
-        SA.lastShotAt = now;
-        try { if (typeof g.fire === 'function') g.fire(); } catch (e) {}
-        silentHolding = true;
-        holding = true;
-        setTimeout(function () {
-          try { if (typeof g.release === 'function') g.release(); } catch (e) {}
-          silentHolding = false;
-          holding = false;
-        }, 10);
+        if (SA.tapDown) {
+          // Lepas tombol tembak tepat setelah pulse tekan (min 1 frame / 24ms)
+          if (now >= SA.tapNextAt) {
+            try { if (typeof g.release === 'function') g.release(); } catch (e) {}
+            SA.tapDown = false;
+            silentHolding = false;
+            holding = false;
+            // Jeda antar tap (klik-klik cepat)
+            SA.tapNextAt = now + (RF.on ? 45 : 75);
+          }
+          return;
+        }
+
+        // Tekan tombol tembak untuk tap berikutnya
+        if (now >= SA.tapNextAt) {
+          try { if (typeof g.fire === 'function') g.fire(); } catch (e) {}
+          SA.tapDown = true;
+          silentHolding = true;
+          holding = true;
+          SA.lastShotAt = now;
+          SA.tapNextAt = now + 24;
+        }
         return;
       }
 
+      // MODE 2: AUTO SHOOT (Tahan untuk senjata auto, auto-retrigger untuk semi-auto/sniper)
       if (SA.autoShoot) {
-        if (!silentHolding) {
-          try { if (typeof g.fire === 'function') g.fire(); } catch (e) {}
-          silentHolding = true;
-          holding = true;
+        if (isFullAutoWeapon) {
+          if (!silentHolding) {
+            try { if (typeof g.fire === 'function') g.fire(); } catch (e) {}
+            silentHolding = true;
+            holding = true;
+          }
+          SA.lastShotAt = now;
+        } else {
+          // Senjata semi-auto / pistol / sniper butuh siklus press -> release agar terus menembak
+          if (SA.tapDown) {
+            if (now >= SA.tapNextAt) {
+              try { if (typeof g.release === 'function') g.release(); } catch (e) {}
+              SA.tapDown = false;
+              silentHolding = false;
+              holding = false;
+              SA.tapNextAt = now + (RF.on ? 30 : 55);
+            }
+            return;
+          }
+          if (now >= SA.tapNextAt) {
+            try { if (typeof g.fire === 'function') g.fire(); } catch (e) {}
+            SA.tapDown = true;
+            silentHolding = true;
+            holding = true;
+            SA.lastShotAt = now;
+            SA.tapNextAt = now + 24;
+          }
         }
-        SA.lastShotAt = now;
-      } else {
-        releaseSilentFire(g);
+        return;
       }
+
+      releaseSilentFire(g);
     }
 
     /* --------------------------------------------------------------------------
@@ -1831,7 +2034,6 @@
       for (; idx < RD.dots.length; idx++) RD.dots[idx].style.display = 'none';
     }
 
-    // POV CIRCLE OVERLAY (Otomatis muncul hanya jika fitur POV aktif)
     var FC = { el: null };
     function fcTick() {
       var needPov = (aimOn && P.lockMode === 'pov') || !!P.silentPov;
@@ -1921,7 +2123,7 @@
        -------------------------------------------------------------------------- */
     var _timers = {
       wb: 0, esp: 0, bone: 0, tracer: 0, silentScan: 0, silentPovScan: 0,
-      respawn: 0, trigger: 0, ammo: 0, dmg: 0, snade: 0
+      respawn: 0, trigger: 0, ammo: 0, dmg: 0, snade: 0, antiFx: 0
     };
 
     function revalidateG() {
@@ -1950,6 +2152,12 @@
       if (!p || !self) return;
 
       try { perfApply(g); } catch (e) {}
+
+      try { antiFlashTick(g); } catch (e) {}
+      if (now - _timers.antiFx >= 120) {
+        _timers.antiFx = now;
+        try { antiSmokeTick(g); } catch (e) {}
+      }
 
       if (FLY.on) { try { flyTick(0.016); } catch (e) {} }
       if (FL.noclip) {
@@ -2159,7 +2367,7 @@
                 down();
                 holding = true;
                 var hMs = 40 + Math.random() * 25;
-                setTimeout(function () { if (holding) up(); }, hMs);
+                setTimeout(function () { if (holding && !silentHolding) up(); }, hMs);
                 nextTap = now + hMs + 80 + Math.random() * 60;
                 break;
               }
@@ -2169,7 +2377,7 @@
       }
 
       /* =========================================================================
-         CIGAR HARD-LOCK AIMBOT CORE
+         HYPERION HARD-LOCK AIMBOT CORE
          ========================================================================= */
       var list = g.bots || [];
       var best = null, bestPt = null, bestScore = 1e9, bestA = 1e9, bestD = 1e9;
@@ -2421,12 +2629,14 @@
       },
       silentAutoShoot: function (on) {
         SA.autoShoot = on ? 1 : 0;
-        if (!SA.autoShoot && !SA.tapShot) releaseSilentFire();
+        if (SA.autoShoot) SA.tapShot = 0;
+        releaseSilentFire();
         return SA.autoShoot;
       },
       silentTapShot: function (on) {
         SA.tapShot = on ? 1 : 0;
-        if (!SA.tapShot && !SA.autoShoot) releaseSilentFire();
+        if (SA.tapShot) SA.autoShoot = 0;
+        releaseSilentFire();
         return SA.tapShot;
       },
       silentTarget: function (t) { if (t === 'head' || t === 'body') SA.target = t; return SA.target; },
@@ -2438,6 +2648,16 @@
       hpo: function (on) { HPO.on = on ? 1 : 0; return HPO.on; },
       fovc: function () { fcTick(); return ((aimOn && P.lockMode === 'pov') || !!P.silentPov) ? 1 : 0; },
       tracer: function (on) { TR.on = on ? 1 : 0; if (!on) trClear(); return TR.on; },
+      noFlash: function (on) {
+        FL.noFlash = on ? 1 : 0;
+        if (!FL.noFlash) restoreFlashDom();
+        return FL.noFlash;
+      },
+      noSmoke: function (on) {
+        FL.noSmoke = on ? 1 : 0;
+        if (!FL.noSmoke) restoreSmokeObjs();
+        return FL.noSmoke;
+      },
       wallbang: function (on) { FL.wallbang = on ? 1 : 0; patchBotHitTest(); return FL.wallbang; },
       infAmmo: function (on) { FL.infAmmo = on ? 1 : 0; return FL.infAmmo; },
       noRecoil: function (on) { FL.noRecoil = on ? 1 : 0; return FL.noRecoil; },
@@ -2525,6 +2745,8 @@
       panic: function () {
         try {
           PERF.on = 0; perfRestoreRefs();
+          FL.noFlash = 0; restoreFlashDom();
+          FL.noSmoke = 0; restoreSmokeObjs();
           P.silentPov = 0; SA_POV_TGT.bot = null;
           SA.on = 0; SA.autoShoot = 0; SA.tapShot = 0; releaseSilentFire();
           FL.godmode = 0; FL.noclip = 0; FLY.on = 0; QC.on = 0; ncUninstall();
@@ -2542,7 +2764,7 @@
           silentMinDist: SA.minDist,
           lob: SL.on, respawn: IR.on, radar: RD.on, hpo: HPO.on,
           fovc: ((aimOn && P.lockMode === 'pov') || !!P.silentPov) ? 1 : 0,
-          tracer: TR.on,
+          tracer: TR.on, noFlash: FL.noFlash, noSmoke: FL.noSmoke,
           wallbang: FL.wallbang, infAmmo: FL.infAmmo, noRecoil: FL.noRecoil,
           godmode: FL.godmode, noclip: FL.noclip, antiKick: FL.antiKick,
           hardLock: P.hardLock, sticky: P.sticky, smoothFire: SF.on,
@@ -2594,6 +2816,7 @@
           silentAutoShoot: xs.silentAutoShoot, silentTapShot: xs.silentTapShot,
           silentTarget: xs.silentTarget, silentFov: xs.silentFov, silentMinDist: xs.silentMinDist,
           lob: SL.on, respawn: xs.respawn, radar: xs.radar, hpo: xs.hpo, tracer: xs.tracer,
+          noFlash: xs.noFlash, noSmoke: xs.noSmoke,
           wallbang: xs.wallbang, infAmmo: xs.infAmmo, noRecoil: xs.noRecoil,
           godmode: xs.godmode, noclip: xs.noclip, antiKick: xs.antiKick,
           smoothFire: xs.smoothFire, infNade: xs.infNade, infNadeMax: xs.infNadeMax,
@@ -2657,6 +2880,8 @@
         if (d.radar != null) PBX_API.radar(d.radar);
         if (d.hpo != null) PBX_API.hpo(d.hpo);
         if (d.tracer != null) PBX_API.tracer(d.tracer);
+        if (d.noFlash != null) PBX_API.noFlash(d.noFlash);
+        if (d.noSmoke != null) PBX_API.noSmoke(d.noSmoke);
         if (d.wallbang != null) PBX_API.wallbang(d.wallbang);
         if (d.infAmmo != null) PBX_API.infAmmo(d.infAmmo);
         if (d.noRecoil != null) PBX_API.noRecoil(d.noRecoil);
@@ -2973,7 +3198,7 @@
       // TAB 1: HARD-LOCK AIMBOT & SILENT AIM POV
       (function () {
         var pg = pages.aim;
-        pg.appendChild(sec('Cigar Hard-Lock Aimbot', 'fa-crosshairs'));
+        pg.appendChild(sec('Hyperion Hard-Lock Aimbot', 'fa-crosshairs'));
         var r1 = row('Hard Aimbot', 'Kunci kamera ke target di dalam POV');
         r1.appendChild(sw(function () { return aimOn; }, function (v) { v ? PB_API.on() : PB_API.off(); }));
         pg.appendChild(r1);
@@ -3040,6 +3265,7 @@
         pg.appendChild(rInv);
       })();
 
+      // TAB 2: VISUAL & ANTI-FLASH/SMOKE
       (function () {
         var pg = pages.visual;
         pg.appendChild(sec('ESP', 'fa-eye'));
@@ -3066,6 +3292,15 @@
         var r6 = row('Radar', 'Mini map musuh');
         r6.appendChild(sw(function () { return RD.on; }, function (v) { PBX_API.radar(v); }));
         pg.appendChild(r6);
+
+        pg.appendChild(sec('Anti Flash & Smoke', 'fa-sun'));
+        var rFlash = row('Anti Flashbang', 'Kebal layar putih flashbang');
+        rFlash.appendChild(sw(function () { return FL.noFlash; }, function (v) { PBX_API.noFlash(v); }));
+        pg.appendChild(rFlash);
+
+        var rSmoke = row('Anti Smoke', 'Hilangkan kabut bom asap');
+        rSmoke.appendChild(sw(function () { return FL.noSmoke; }, function (v) { PBX_API.noSmoke(v); }));
+        pg.appendChild(rSmoke);
 
         pg.appendChild(sec('Damage', 'fa-explosion'));
         pg.appendChild(slider('Dmg Multi', 1, 3, 0.1,
@@ -3110,6 +3345,7 @@
         pg.appendChild(r8);
       })();
 
+      // TAB 4: SILENT AIM 360 (MUTUALLY EXCLUSIVE AUTO SHOOT / TAP SHOT)
       (function () {
         var pg = pages.silent;
         pg.appendChild(sec('Silent Aim (360°)', 'fa-bolt'));
@@ -3117,12 +3353,21 @@
         r1.appendChild(sw(function () { return SA.on; }, function (v) { PBX_API.silent(v); }));
         pg.appendChild(r1);
 
-        var r2 = row('Auto Shoot (Opsional)', 'Otomatis menembak tanpa klik');
-        r2.appendChild(sw(function () { return SA.autoShoot; }, function (v) { PBX_API.silentAutoShoot(v); }));
+        var swAuto, swTap;
+        var r2 = row('Auto Shoot (Opsional)', 'Otomatis menembak terus saat ada target');
+        swAuto = sw(function () { return SA.autoShoot; }, function (v) {
+          PBX_API.silentAutoShoot(v);
+          if (v && swTap) swTap.classList.remove('on');
+        });
+        r2.appendChild(swAuto);
         pg.appendChild(r2);
 
-        var r3 = row('Tap Shot (Opsional)', 'Auto tap cepat');
-        r3.appendChild(sw(function () { return SA.tapShot; }, function (v) { PBX_API.silentTapShot(v); }));
+        var r3 = row('Tap Shot (Opsional)', 'Klik-klik cepat (tap-tap) per peluru');
+        swTap = sw(function () { return SA.tapShot; }, function (v) {
+          PBX_API.silentTapShot(v);
+          if (v && swAuto) swAuto.classList.remove('on');
+        });
+        r3.appendChild(swTap);
         pg.appendChild(r3);
 
         pg.appendChild(select('Silent Target',
