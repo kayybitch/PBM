@@ -2,7 +2,7 @@
 // @name         PBWEB - CIGAR ELITE
 // @namespace    cigarelite.local
 // @version      1.0.3
-// @description  CIGAR ELITE (Hyperion Hard-Lock Aimbot + Silent Aim POV + ESP + Anti Flash/Smoke + 360 Silent Aim + Anti-Kick + Performance Mode)
+// @description  CIGAR ELITE (Cigar Hard-Lock Aimbot + Silent Aim POV + ESP + Anti Flash/Smoke + 360 Silent Aim + Anti-Kick + Performance Mode)
 // @match        *://pbmobile.app/*
 // @match        *://*.pbmobile.app/*
 // @run-at       document-start
@@ -209,7 +209,7 @@
     })();
 
     /* --------------------------------------------------------------------------
-       2.2 STATE & KONFIGURASI GLOBAL (HYPERION HARD-LOCK + SILENT AIM POV)
+       2.2 STATE & KONFIGURASI GLOBAL (CIGAR HARD-LOCK + SILENT AIM POV)
        -------------------------------------------------------------------------- */
     var HIDDEN = { pb: null, pbvis: null, pbnade: null, pbqc: null, pbx: null };
 
@@ -2714,7 +2714,7 @@
       }
 
       /* =========================================================================
-         HYPERION HARD-LOCK AIMBOT CORE
+         CIGAR HARD-LOCK AIMBOT CORE
          ========================================================================= */
       var list = g.bots || [];
       var best = null, bestPt = null, bestScore = 1e9, bestA = 1e9, bestD = 1e9;
@@ -3666,7 +3666,7 @@
           function (v) { PB_API.povCircle(v); },
           function (v) { return v + 'px'; }));
 
-        pg.appendChild(sec('Hyperion Hard-Lock Aimbot', 'fa-crosshairs'));
+        pg.appendChild(sec('Cigar Hard-Lock Aimbot', 'fa-crosshairs'));
         var r1 = row('Hard Aimbot', 'Kunci kamera ke target di dalam POV');
         r1.appendChild(sw(function () { return aimOn; }, function (v) { v ? PB_API.on() : PB_API.off(); }));
         pg.appendChild(r1);
