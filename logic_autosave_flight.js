@@ -2,7 +2,7 @@
 // @name         PBWEB - CIGAR ELITE
 // @namespace    cigarelite.local
 // @version      1.0.3
-// @description  CIGAR ELITE (Cigar Hard-Lock Aimbot + Silent Aim POV + ESP + Anti Flash/Smoke + 360 Silent Aim + Anti-Kick + Performance Mode)
+// @description  CIGAR ELITE (Hyperion Hard-Lock Aimbot + Silent Aim POV + ESP + Anti Flash/Smoke + 360 Silent Aim + Anti-Kick + Performance Mode)
 // @match        *://pbmobile.app/*
 // @match        *://*.pbmobile.app/*
 // @run-at       document-start
@@ -209,7 +209,7 @@
     })();
 
     /* --------------------------------------------------------------------------
-       2.2 STATE & KONFIGURASI GLOBAL (CIGAR HARD-LOCK + SILENT AIM POV)
+       2.2 STATE & KONFIGURASI GLOBAL (HYPERION HARD-LOCK + SILENT AIM POV)
        -------------------------------------------------------------------------- */
     var HIDDEN = { pb: null, pbvis: null, pbnade: null, pbqc: null, pbx: null };
 
@@ -370,29 +370,52 @@
       } catch (e) {}
     }
 
+    var _chamsThemeKey = '';
+
+    function tintSingleMat(mat, rHex, gHex, bHex) {
+      if (!mat) return mat;
+      var cloned = null;
+      try {
+        cloned = typeof mat.clone === 'function' ? mat.clone() : mat;
+      } catch (e) {
+        cloned = mat;
+      }
+      try {
+        if (cloned.color && typeof cloned.color.setRGB === 'function') {
+          cloned.color.setRGB(rHex, gHex, bHex);
+        }
+        if (cloned.emissive && typeof cloned.emissive.setRGB === 'function') {
+          cloned.emissive.setRGB(rHex * 0.55, gHex * 0.55, bHex * 0.55);
+        }
+        cloned.depthTest = false;
+        cloned.needsUpdate = true;
+      } catch (e) {}
+      return cloned;
+    }
+
     function restoreChams() {
       for (var i = 0; i < _chamsTrackedMeshes.length; i++) {
         var mesh = _chamsTrackedMeshes[i];
         var saved = _chamsApplied.get(mesh);
-        if (mesh && saved) {
-          try {
-            if (mesh.material && saved.mat) {
-              if (saved.color && mesh.material.color && saved.color.r != null) {
-                mesh.material.color.r = saved.color.r;
-                mesh.material.color.g = saved.color.g;
-                mesh.material.color.b = saved.color.b;
+        if (!mesh || !saved) continue;
+        try {
+          if (saved.origMat != null) {
+            if (Array.isArray(saved.clonedMat)) {
+              for (var k = 0; k < saved.clonedMat.length; k++) {
+                if (saved.clonedMat[k] && saved.clonedMat[k] !== saved.origMat[k] && typeof saved.clonedMat[k].dispose === 'function') {
+                  saved.clonedMat[k].dispose();
+                }
               }
-              if (saved.emissive && mesh.material.emissive && saved.emissive.r != null) {
-                mesh.material.emissive.r = saved.emissive.r;
-                mesh.material.emissive.g = saved.emissive.g;
-                mesh.material.emissive.b = saved.emissive.b;
-              }
-              if (saved.depthTest != null) mesh.material.depthTest = saved.depthTest;
+            } else if (saved.clonedMat && saved.clonedMat !== saved.origMat && typeof saved.clonedMat.dispose === 'function') {
+              saved.clonedMat.dispose();
             }
-          } catch (e) {}
-        }
+            mesh.material = saved.origMat;
+          }
+          if (saved.renderOrder != null) mesh.renderOrder = saved.renderOrder;
+        } catch (e) {}
       }
       _chamsTrackedMeshes = [];
+      _chamsThemeKey = '';
     }
 
     function chamsTick(g) {
@@ -406,7 +429,14 @@
         restoreChams();
         return;
       }
+
       var t = getThemeObj();
+      var themeKey = EXTRA.theme + ':' + t.main;
+      if (_chamsThemeKey && _chamsThemeKey !== themeKey) {
+        restoreChams();
+      }
+      _chamsThemeKey = themeKey;
+
       var rHex = parseInt(t.main.slice(1, 3), 16) / 255;
       var gHex = parseInt(t.main.slice(3, 5), 16) / 255;
       var bHex = parseInt(t.main.slice(5, 7), 16) / 255;
@@ -416,21 +446,26 @@
         if (!b || !b.obj || b === self || b.team === self.team || b.dead || !(b.hp > 0)) continue;
         try {
           b.obj.traverse(function (o) {
-            if (!o || !o.isMesh || !o.material || Array.isArray(o.material)) return;
-            var mat = o.material;
-            if (!_chamsApplied.has(o)) {
-              _chamsApplied.set(o, {
-                mat: mat,
-                color: mat.color ? { r: mat.color.r, g: mat.color.g, b: mat.color.b } : null,
-                emissive: mat.emissive ? { r: mat.emissive.r, g: mat.emissive.g, b: mat.emissive.b } : null,
-                depthTest: mat.depthTest
-              });
+            if (!o || !o.isMesh || !o.material) return;
+            var saved = _chamsApplied.get(o);
+            if (!saved) {
+              var origMat = o.material;
+              var clonedMat;
+              if (Array.isArray(origMat)) {
+                clonedMat = origMat.map(function (m) { return tintSingleMat(m, rHex, gHex, bHex); });
+              } else {
+                clonedMat = tintSingleMat(origMat, rHex, gHex, bHex);
+              }
+              saved = {
+                origMat: origMat,
+                clonedMat: clonedMat,
+                renderOrder: o.renderOrder
+              };
+              _chamsApplied.set(o, saved);
               _chamsTrackedMeshes.push(o);
+              o.material = clonedMat;
+              o.renderOrder = 999;
             }
-            if (mat.color) { mat.color.r = rHex; mat.color.g = gHex; mat.color.b = bHex; }
-            if (mat.emissive) { mat.emissive.r = rHex * 0.55; mat.emissive.g = gHex * 0.55; mat.emissive.b = bHex * 0.55; }
-            mat.depthTest = false;
-            mat.needsUpdate = true;
           });
         } catch (e) {}
       }
@@ -447,28 +482,41 @@
         var el = document.createElement('div');
         el.id = 'cigar-lock-hud';
         el.setAttribute('data-pb', '1');
-        el.style.cssText = 'position:fixed;left:50%;top:calc(50% + ' + (P.povCircleR + 18) + 'px);transform:translateX(-50%);padding:3px 9px;border-radius:6px;background:rgba(16,7,9,0.85);border:1px solid rgba(239,68,68,0.45);color:#fca5a5;font:700 10px/1.25 monospace;pointer-events:none;z-index:2147483501;display:none;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.55)';
+        el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);padding:3px 9px;border-radius:6px;background:rgba(16,7,9,0.85);border:1px solid rgba(239,68,68,0.45);color:#fca5a5;font:700 10px/1.25 monospace;pointer-events:none;z-index:2147483501;display:none;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.55)';
         host.appendChild(el);
         _lockHudEl = el;
       }
-      var activeBot = bestBot || (P.silentPov && SA_POV_TGT.bot) || (SA.on && SA_HEAD.bot) || null;
-      if (!activeBot || !g || !g.P || !g.P.s || g.P.s.dead) {
+
+      if (!g || !g.P || !g.P.s || g.P.s.dead) {
         _lockHudEl.style.display = 'none';
         return;
       }
+
       var t = getThemeObj();
+      var radiusPx = clamp(+P.povCircleR || 150, 5, 600);
+      var desiredTop = (window.innerHeight * 0.5) + radiusPx + 16;
+      var safeTop = clamp(desiredTop, 54, Math.max(54, window.innerHeight - 36));
+
+      _lockHudEl.style.display = 'block';
+      _lockHudEl.style.top = safeTop.toFixed(0) + 'px';
+      _lockHudEl.style.borderColor = 'rgba(' + t.rgb + ',0.55)';
+      _lockHudEl.style.color = t.light;
+
+      var activeBot = bestBot || (P.silentPov && SA_POV_TGT.bot) || (SA.on && SA_HEAD.bot) || null;
+      var modeTag = P.silentPov ? 'SILENT-POV' : (SA.on ? 'SILENT-360' : 'LOCK');
+
+      if (!activeBot) {
+        _lockHudEl.textContent = '[' + modeTag + '] SCANNING';
+        return;
+      }
+
       var nm = String(activeBot.name || activeBot.nick || 'TARGET').slice(0, 16);
       var hpVal = Math.max(0, Math.round(activeBot.hp || 0));
       var dVal = typeof bestDist === 'number' && isFinite(bestDist) ? Math.round(bestDist) + 'm' : '';
-      var modeTag = P.silentPov ? 'SILENT-POV' : (SA.on ? 'SILENT-360' : 'LOCK');
-      _lockHudEl.style.display = 'block';
-      _lockHudEl.style.top = 'calc(50% + ' + (clamp(+P.povCircleR || 150, 5, 600) + 16) + 'px)';
-      _lockHudEl.style.borderColor = 'rgba(' + t.rgb + ',0.55)';
-      _lockHudEl.style.color = t.light;
       _lockHudEl.textContent = '[' + modeTag + '] ' + nm + ' • ' + hpVal + 'HP' + (dVal ? ' • ' + dVal : '');
     }
 
-    function quickBtnTick() {
+        function quickBtnTick() {
       if (!EXTRA.quickBtn) {
         if (_quickBtnEl) _quickBtnEl.style.display = 'none';
         return;
@@ -1276,6 +1324,8 @@
     function antiSmokeTick(g) {
       if (!FL.noSmoke) {
         restoreSmokeObjs();
+          restoreChams();
+          if (_lockHudEl) _lockHudEl.style.display = 'none';
         return;
       }
 
@@ -2664,7 +2714,7 @@
       }
 
       /* =========================================================================
-         CIGAR HARD-LOCK AIMBOT CORE
+         HYPERION HARD-LOCK AIMBOT CORE
          ========================================================================= */
       var list = g.bots || [];
       var best = null, bestPt = null, bestScore = 1e9, bestA = 1e9, bestD = 1e9;
@@ -3616,7 +3666,7 @@
           function (v) { PB_API.povCircle(v); },
           function (v) { return v + 'px'; }));
 
-        pg.appendChild(sec('Cigar Hard-Lock Aimbot', 'fa-crosshairs'));
+        pg.appendChild(sec('Hyperion Hard-Lock Aimbot', 'fa-crosshairs'));
         var r1 = row('Hard Aimbot', 'Kunci kamera ke target di dalam POV');
         r1.appendChild(sw(function () { return aimOn; }, function (v) { v ? PB_API.on() : PB_API.off(); }));
         pg.appendChild(r1);
