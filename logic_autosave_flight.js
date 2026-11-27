@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PBWEB - CIGAR ELITE
 // @namespace    cigarelite.local
-// @version      1.0.1
+// @version      1.0.2
 // @description  CIGAR ELITE (Hyperion Hard-Lock Aimbot + Silent Aim POV + ESP + Anti Flash/Smoke + 360 Silent Aim + Anti-Kick + Performance Mode)
 // @match        *://pbmobile.app/*
 // @match        *://*.pbmobile.app/*
@@ -52,7 +52,7 @@
      2. CORE ENGINE
      ============================================================================ */
   function bootCore() {
-    var V = '1.0.1';
+    var V = '1.0.2';
     var BRAND = 'CIGAR ELITE';
 
     function log() {
@@ -221,6 +221,7 @@
       mode: 'near',
       bias: 0.35,
       aimMode: 'pov',
+      povCircleOn: 0, // Default OFF agar tidak tampil otomatis tanpa diminta
       povCircleR: 150,
       hitbox: 'head',
       hardLock: 0,
@@ -1619,22 +1620,18 @@
       var w = g.P && g.P.W;
       var isFullAutoWeapon = !!(w && (w.auto === true || w.fullAuto === true || w.automatic === true));
 
-      // MODE 1: TAP SHOT (True Tap-Tap / Klik-klik cepat tanpa menahan)
       if (SA.tapShot) {
         if (SA.tapDown) {
-          // Lepas tombol tembak tepat setelah pulse tekan (min 1 frame / 24ms)
           if (now >= SA.tapNextAt) {
             try { if (typeof g.release === 'function') g.release(); } catch (e) {}
             SA.tapDown = false;
             silentHolding = false;
             holding = false;
-            // Jeda antar tap (klik-klik cepat)
             SA.tapNextAt = now + (RF.on ? 45 : 75);
           }
           return;
         }
 
-        // Tekan tombol tembak untuk tap berikutnya
         if (now >= SA.tapNextAt) {
           try { if (typeof g.fire === 'function') g.fire(); } catch (e) {}
           SA.tapDown = true;
@@ -1646,7 +1643,6 @@
         return;
       }
 
-      // MODE 2: AUTO SHOOT (Tahan untuk senjata auto, auto-retrigger untuk semi-auto/sniper)
       if (SA.autoShoot) {
         if (isFullAutoWeapon) {
           if (!silentHolding) {
@@ -1656,7 +1652,6 @@
           }
           SA.lastShotAt = now;
         } else {
-          // Senjata semi-auto / pistol / sniper butuh siklus press -> release agar terus menembak
           if (SA.tapDown) {
             if (now >= SA.tapNextAt) {
               try { if (typeof g.release === 'function') g.release(); } catch (e) {}
@@ -1760,7 +1755,7 @@
           });
           try { sock.send = function (d) { d = pbOut(d); if (d === null) return; try { if (rec.live && rsGet.call(rec.live) === 1) return sendN.call(rec.live, d); } catch (e) {} return sendN.call(sock, d); }; } catch (e) {}
           try { sock.close = function (c, r) { try { if (rec.live) closeN.call(rec.live, c, r); } catch (e) {} try { return closeN.call(sock, c, r); } catch (e) {} }; } catch (e) {}
-          try { Object.defineProperty(sock, 'readyState', { configurable: true, get: function () { try { if (rec.live) return rsGet.call(rec.live); } catch (e) {} try { return rsGet.call(sock); } catch (e) { return 3; } } }); } catch (e) {}
+          try { Object.defineProperty(sock, 'readyState', { configurable: true, get: function () { try { if (rec.live) return rsGet.call(rec.live); } catch (e) {} try { return rsGet.call(sock); } catch (e) {} return 3; } }); } catch (e) {}
           return sock;
         }
         function WSW(url, prot) {
@@ -1775,7 +1770,7 @@
     })();
 
     /* --------------------------------------------------------------------------
-       2.10 ESP & VISUAL OVERLAYS (BOX, BONE, RADAR, TRACER, AUTO POV RING)
+       2.10 ESP & VISUAL OVERLAYS (BOX, BONE, RADAR, TRACER, TOGGLEABLE POV RING)
        -------------------------------------------------------------------------- */
     var E = { on: 1, nameOn: 0, wrap: null, slots: [], last: 0, n: 0, v: null };
     var HPO = { on: 0 };
@@ -2034,10 +2029,11 @@
       for (; idx < RD.dots.length; idx++) RD.dots[idx].style.display = 'none';
     }
 
+    // Visual-only POV Circle dikontrol penuh oleh P.povCircleOn (tanpa memaksa muncul otomatis)
     var FC = { el: null };
     function fcTick() {
-      var needPov = (aimOn && P.lockMode === 'pov') || !!P.silentPov;
-      if (!needPov) {
+      var showCircle = !!P.povCircleOn;
+      if (!showCircle) {
         if (FC.el) FC.el.style.display = 'none';
         return;
       }
@@ -2047,13 +2043,13 @@
         var w = document.createElement('div');
         w.id = 'cigar-pov-circle';
         w.setAttribute('data-pb', '1');
-        w.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);border:1.5px dashed rgba(6,182,212,.85);border-radius:50%;z-index:2147483500;pointer-events:none;box-shadow:0 0 12px rgba(6,182,212,0.18)';
+        w.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);border:1.5px dashed rgba(34,211,238,.82);border-radius:50%;z-index:2147483500;pointer-events:none;box-shadow:0 0 12px rgba(6,182,212,0.16);transition:width .08s ease,height .08s ease,border-color .15s ease';
         host.appendChild(w);
         FC.el = w;
       }
       FC.el.style.display = 'block';
-      FC.el.style.borderColor = P.silentPov ? 'rgba(16,185,129,0.9)' : 'rgba(6,182,212,0.85)';
-      var r = P.povCircleR;
+      FC.el.style.borderColor = P.silentPov ? 'rgba(16,185,129,0.88)' : 'rgba(34,211,238,0.82)';
+      var r = clamp(+P.povCircleR || 150, 5, 600);
       FC.el.style.width = (r * 2).toFixed(0) + 'px';
       FC.el.style.height = (r * 2).toFixed(0) + 'px';
     }
@@ -2520,7 +2516,7 @@
         return {
           v: V, aim: aimOn, silentPov: P.silentPov, G: !!G, bots: st.bots, enemies: st.enemies, lock: st.lock,
           dist: +st.dist.toFixed(2), mode: P.mode, aimMode: P.aimMode,
-          povCircleR: P.povCircleR, hitbox: P.hitbox,
+          povCircleOn: P.povCircleOn, povCircleR: P.povCircleR, hitbox: P.hitbox,
           err: +(st.err * 57.2958).toFixed(2), fire: fireHeld, autoFire: P.autoFire,
           sens: O.sens, fov: O.fov, hardLock: P.hardLock, sticky: P.sticky,
           bulletSpeed: P.bulletSpeed, leadFactor: P.leadFactor, lockMode: P.lockMode
@@ -2543,6 +2539,11 @@
         return P.silentPov;
       },
       aimMode: function () { P.aimMode = 'pov'; return P.aimMode; },
+      povCircleOn: function (on) {
+        P.povCircleOn = on ? 1 : 0;
+        fcTick();
+        return P.povCircleOn;
+      },
       povCircle: function (v) { if (typeof v === 'number' && v >= 1) { P.povCircleR = v; fcTick(); } return P.povCircleR; },
       hitbox: function (v) { if (v === 'head' || v === 'body' || v === 'nearest') { P.hitbox = v; st.hitbox = v; } return P.hitbox; },
       lockMode: function (m) {
@@ -2646,7 +2647,14 @@
       respawn: function (on) { IR.on = on ? 1 : 0; return IR.on; },
       radar: function (on) { RD.on = on ? 1 : 0; if (!on && RD.el) RD.el.style.display = 'none'; return RD.on; },
       hpo: function (on) { HPO.on = on ? 1 : 0; return HPO.on; },
-      fovc: function () { fcTick(); return ((aimOn && P.lockMode === 'pov') || !!P.silentPov) ? 1 : 0; },
+      povCircleOn: function (on) { return PB_API.povCircleOn(on); },
+      fovc: function (on) {
+        if (on !== undefined) {
+          P.povCircleOn = on ? 1 : 0;
+        }
+        fcTick();
+        return P.povCircleOn ? 1 : 0;
+      },
       tracer: function (on) { TR.on = on ? 1 : 0; if (!on) trClear(); return TR.on; },
       noFlash: function (on) {
         FL.noFlash = on ? 1 : 0;
@@ -2747,6 +2755,7 @@
           PERF.on = 0; perfRestoreRefs();
           FL.noFlash = 0; restoreFlashDom();
           FL.noSmoke = 0; restoreSmokeObjs();
+          P.povCircleOn = 0; fcTick();
           P.silentPov = 0; SA_POV_TGT.bot = null;
           SA.on = 0; SA.autoShoot = 0; SA.tapShot = 0; releaseSilentFire();
           FL.godmode = 0; FL.noclip = 0; FLY.on = 0; QC.on = 0; ncUninstall();
@@ -2763,7 +2772,8 @@
           silentTapShot: SA.tapShot, silentTarget: SA.target, silentFov: SA.fovDeg,
           silentMinDist: SA.minDist,
           lob: SL.on, respawn: IR.on, radar: RD.on, hpo: HPO.on,
-          fovc: ((aimOn && P.lockMode === 'pov') || !!P.silentPov) ? 1 : 0,
+          povCircleOn: P.povCircleOn ? 1 : 0,
+          fovc: P.povCircleOn ? 1 : 0,
           tracer: TR.on, noFlash: FL.noFlash, noSmoke: FL.noSmoke,
           wallbang: FL.wallbang, infAmmo: FL.infAmmo, noRecoil: FL.noRecoil,
           godmode: FL.godmode, noclip: FL.noclip, antiKick: FL.antiKick,
@@ -2793,18 +2803,26 @@
     });
 
     /* --------------------------------------------------------------------------
-       2.13 SETTINGS PERSISTENCE (CLEAN V6)
+       2.13 SETTINGS PERSISTENCE (CLEAN V7)
        -------------------------------------------------------------------------- */
-    var SETTINGS_KEY = 'cigar_settings_v6';
+    var SETTINGS_KEY = 'cigar_settings_v7';
     var _saveTimer = 0;
+    var _uiSyncers = [];
+
+    function syncAllUI() {
+      for (var i = 0; i < _uiSyncers.length; i++) {
+        try { _uiSyncers[i](); } catch (e) {}
+      }
+    }
 
     function saveSettings() {
       try {
         var ps = PB_API.state();
         var xs = PBX_API.st();
         var data = {
-          version: 6,
-          aim: ps.aim, silentPov: P.silentPov, povCircleR: ps.povCircleR, hitbox: ps.hitbox,
+          version: 7,
+          aim: ps.aim, silentPov: P.silentPov,
+          povCircleOn: P.povCircleOn ? 1 : 0, povCircleR: ps.povCircleR, hitbox: ps.hitbox,
           hardLock: P.hardLock, sticky: P.sticky,
           bulletSpeed: ps.bulletSpeed, leadFactor: ps.leadFactor, lockMode: ps.lockMode,
           autoFire: P.autoFire, sens: O.sens, fov: O.fov, invert: O.invert,
@@ -2839,10 +2857,14 @@
     function restoreSettings() {
       var d;
       try { d = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null'); } catch (e) { d = null; }
-      if (!d || d.version !== 6) return;
+      if (!d || d.version !== 7) {
+        fcTick();
+        return;
+      }
       try {
         if (d.aim != null) d.aim ? PB_API.on() : PB_API.off();
         if (d.silentPov != null) PB_API.silentPov(d.silentPov);
+        if (d.povCircleOn != null) PB_API.povCircleOn(d.povCircleOn);
         if (d.povCircleR > 0) PB_API.povCircle(d.povCircleR);
         if (d.hitbox) PB_API.hitbox(d.hitbox);
         if (d.hardLock != null) PB_API.hardLock(d.hardLock);
@@ -2923,12 +2945,14 @@
     setInterval(saveSettings, 5000);
 
     /* ============================================================================
-       3. UI SYSTEM (CYBER CYAN THEME & FULL DRAGGABLE PANEL)
+       3. UI SYSTEM (MODERN CYBER-SLATE THEME & FULL DRAGGABLE PANEL)
        ============================================================================ */
     function mountUI() {
       var host = document.body || document.documentElement;
       if (!host) return setTimeout(mountUI, 50);
       if (document.getElementById('cigar-panel')) return;
+
+      _uiSyncers = [];
 
       if (!document.querySelector('link[data-fa]')) {
         var fa = document.createElement('link');
@@ -2938,69 +2962,82 @@
         (document.head || document.documentElement).appendChild(fa);
       }
 
+      var oldStyle = document.getElementById('cigar-ui-style');
+      if (oldStyle) oldStyle.remove();
+
       var css = [
         '.fk{position:fixed;top:12px;right:14px;z-index:2147483600;font:11px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#e2e8f0;',
-        '  background:rgba(9,14,23,0.90);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(6,182,212,0.38);border-radius:12px;',
-        '  box-shadow:0 12px 36px rgba(0,0,0,0.75),0 0 18px rgba(6,182,212,0.20),inset 0 1px 0 rgba(255,255,255,0.06);pointer-events:auto;user-select:none;touch-action:none;overflow:hidden}',
-        '.fk:hover{border-color:rgba(34,211,238,0.6);box-shadow:0 16px 42px rgba(0,0,0,0.85),0 0 24px rgba(6,182,212,0.3)}',
+        '  background:linear-gradient(180deg,rgba(11,17,29,0.94),rgba(7,12,21,0.95));backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);',
+        '  border:1px solid rgba(34,211,238,0.34);border-radius:13px;',
+        '  box-shadow:0 14px 38px rgba(0,0,0,0.78),0 0 20px rgba(6,182,212,0.16),inset 0 1px 0 rgba(255,255,255,0.07);',
+        '  pointer-events:auto;user-select:none;touch-action:none;overflow:hidden;transition:border-color .18s ease}',
+        '.fk:hover{border-color:rgba(34,211,238,0.58)}',
         '.fk.expanded{display:flex;flex-direction:row}',
-        '.fk.expanded .fk-rail{display:flex;flex-direction:column;background:rgba(5,9,16,0.82);border-right:1px solid rgba(6,182,212,0.2);width:44px;padding:6px 0;gap:3px;flex:0 0 44px;overflow-y:auto;max-height:86vh}',
+        '.fk.expanded .fk-rail{display:flex;flex-direction:column;background:rgba(5,9,17,0.88);border-right:1px solid rgba(34,211,238,0.16);width:46px;padding:7px 0;gap:4px;flex:0 0 46px;overflow-y:auto;max-height:86vh}',
         '.fk-rail::-webkit-scrollbar{width:2px}',
-        '.fk-rail::-webkit-scrollbar-thumb{background:rgba(6,182,212,0.35);border-radius:2px}',
-        '.fk.expanded .fk-body-col{width:262px;display:flex;flex-direction:column;min-width:0}',
+        '.fk-rail::-webkit-scrollbar-thumb{background:rgba(34,211,238,0.35);border-radius:2px}',
+        '.fk.expanded .fk-body-col{width:276px;display:flex;flex-direction:column;min-width:0}',
         '.fk.expanded .fk-tabbar{display:none}',
-        '.fk.collapsed{width:auto;border-radius:10px}',
+        '.fk.collapsed{width:auto;border-radius:11px}',
         '.fk.collapsed .fk-rail,.fk.collapsed .fk-body-col{display:none}',
-        '.fk.collapsed .fk-tabbar{display:flex;align-items:center;gap:8px;padding:6px 11px;cursor:grab;background:rgba(9,14,23,0.94)}',
+        '.fk.collapsed .fk-tabbar{display:flex;align-items:center;gap:8px;padding:6px 11px;cursor:grab;background:rgba(10,16,28,0.95)}',
         '.fk.collapsed .fk-tabbar:active{cursor:grabbing}',
-        '.fk.collapsed .fk-tb-title{font:800 11px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#67e8f9;text-shadow:0 0 8px rgba(103,232,249,0.5);letter-spacing:.6px;white-space:nowrap}',
+        '.fk.collapsed .fk-tb-title{font:800 11px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#67e8f9;letter-spacing:.6px;white-space:nowrap}',
         '.fk.collapsed .fk-tb-title .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 8px #10b981;margin-right:6px;vertical-align:middle}',
-        '.fk-tb-open{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;cursor:pointer;background:linear-gradient(135deg,#0891b2,#10b981);box-shadow:0 0 8px rgba(6,182,212,0.5);font-weight:900;flex:0 0 22px}',
+        '.fk-tb-open{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;cursor:pointer;background:linear-gradient(135deg,#0891b2,#10b981);box-shadow:0 0 8px rgba(6,182,212,0.45);font-weight:900;flex:0 0 22px}',
         '.fk-tb-open:hover{transform:scale(1.08)}',
-        '.fk-rail-btn{width:36px;height:34px;margin:0 auto;border-radius:7px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:#94a3b8;cursor:pointer;transition:all .15s;flex:0 0 34px}',
-        '.fk-rail-btn i{font-size:11px}',
-        '.fk-rail-btn span{font-size:6.5px;font-weight:800;letter-spacing:.3px}',
-        '.fk-rail-btn:hover{background:rgba(6,182,212,0.18);color:#67e8f9}',
-        '.fk-rail-btn.on{background:linear-gradient(135deg,#0891b2 0%,#10b981 100%);color:#fff;box-shadow:0 0 12px rgba(6,182,212,0.55)}',
-        '.fk-h{display:flex;align-items:center;gap:6px;padding:7px 10px;border-bottom:1px solid rgba(6,182,212,0.2);background:rgba(12,19,31,0.9);font-weight:700;cursor:grab}',
+        '.fk-rail-btn{width:38px;height:35px;margin:0 auto;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:#94a3b8;cursor:pointer;transition:all .15s;flex:0 0 35px;border:1px solid transparent}',
+        '.fk-rail-btn i{font-size:11.5px}',
+        '.fk-rail-btn span{font-size:6.5px;font-weight:800;letter-spacing:.35px}',
+        '.fk-rail-btn:hover{background:rgba(34,211,238,0.12);color:#67e8f9;border-color:rgba(34,211,238,0.22)}',
+        '.fk-rail-btn.on{background:linear-gradient(135deg,rgba(8,145,178,0.92),rgba(16,185,129,0.92));color:#fff;box-shadow:0 0 12px rgba(6,182,212,0.42);border-color:rgba(103,232,249,0.45)}',
+        '.fk-h{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid rgba(34,211,238,0.18);background:rgba(13,20,34,0.92);font-weight:700;cursor:grab}',
         '.fk-h:active{cursor:grabbing}',
         '.fk-h .dot{width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 8px #10b981;flex:0 0 7px}',
-        '.fk-h .title{font-size:11.5px;font-weight:800;color:#67e8f9;text-shadow:0 0 10px rgba(103,232,249,0.45);letter-spacing:.5px}',
-        '.fk-h .v{font-weight:600;font-size:9px;margin-left:auto;color:#38bdf8;font-family:monospace}',
-        '.fk-toggle{cursor:pointer;margin-left:4px;color:#fff;border-radius:5px;width:20px;height:20px;display:flex;align-items:center;justify-content:center;flex:0 0 20px;font-size:10px;background:rgba(6,182,212,0.25);border:1px solid rgba(6,182,212,0.4)}',
+        '.fk-h .title{font-size:11.5px;font-weight:800;color:#67e8f9;letter-spacing:.55px}',
+        '.fk-h .pill{font-size:8px;font-weight:800;padding:2px 5px;border-radius:4px;background:rgba(34,211,238,0.12);border:1px solid rgba(34,211,238,0.28);color:#67e8f9;letter-spacing:.3px}',
+        '.fk-h .pill.off{background:rgba(148,163,184,0.12);border-color:rgba(148,163,184,0.25);color:#94a3b8}',
+        '.fk-h .v{font-weight:700;font-size:8.5px;margin-left:auto;color:#38bdf8;font-family:monospace}',
+        '.fk-toggle{cursor:pointer;margin-left:3px;color:#fff;border-radius:6px;width:21px;height:21px;display:flex;align-items:center;justify-content:center;flex:0 0 21px;font-size:10px;background:rgba(34,211,238,0.18);border:1px solid rgba(34,211,238,0.36);transition:all .15s}',
         '.fk-toggle:hover{background:#0891b2}',
-        '.fk-body{padding:7px 10px 10px;max-height:56vh;overflow-y:auto}',
+        '.fk-body{padding:8px 11px 11px;max-height:58vh;overflow-y:auto}',
         '.fk-body::-webkit-scrollbar{width:3px}',
-        '.fk-body::-webkit-scrollbar-thumb{background:rgba(6,182,212,0.4);border-radius:2px}',
+        '.fk-body::-webkit-scrollbar-thumb{background:rgba(34,211,238,0.38);border-radius:2px}',
         '.fk-page{display:none}.fk-page.on{display:block}',
-        '.fk-sec{margin:8px 0 4px;font-size:9px;letter-spacing:1px;color:#38bdf8;text-transform:uppercase;font-weight:800;display:flex;align-items:center;gap:5px}',
-        '.fk-sec:first-child{margin-top:0}.fk-sec i{color:#10b981}',
-        '.fk-row{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:3.5px 0;border-bottom:1px solid rgba(255,255,255,0.04)}',
-        '.fk-row label{flex:1;color:#f1f5f9;font-size:11px;font-weight:500}',
-        '.fk-row small{display:block;color:#94a3b8;font-size:8.5px;margin-top:1px}',
-        '.fk-sw{position:relative;width:30px;height:16px;flex:0 0 30px;border-radius:9px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.1);transition:all .15s;cursor:pointer}',
-        '.fk-sw::after{content:"";position:absolute;top:1px;left:1px;width:12px;height:12px;border-radius:50%;background:#94a3b8;transition:transform .15s,background .15s}',
-        '.fk-sw.on{background:linear-gradient(135deg,#0891b2,#10b981);border-color:rgba(34,211,238,0.65);box-shadow:0 0 10px rgba(6,182,212,0.5)}',
-        '.fk-sw.on::after{transform:translateX(14px);background:#fff}',
-        '.fk-slider{display:flex;align-items:center;gap:6px;padding:3px 0}',
-        '.fk-slider label{flex:0 0 76px;font-size:9.5px;color:#cbd5e1}',
+        '.fk-sec{margin:9px 0 4px;font-size:8.5px;letter-spacing:.95px;color:#38bdf8;text-transform:uppercase;font-weight:800;display:flex;align-items:center;gap:5px}',
+        '.fk-sec:first-child{margin-top:0}.fk-sec i{color:#10b981;font-size:9px}',
+        '.fk-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4.5px 2px;border-bottom:1px solid rgba(255,255,255,0.045)}',
+        '.fk-row:last-child{border-bottom:none}',
+        '.fk-row label{flex:1;color:#f1f5f9;font-size:11px;font-weight:600;cursor:pointer}',
+        '.fk-row small{display:block;color:#94a3b8;font-size:8.5px;font-weight:400;margin-top:1px}',
+        '.fk-chip-bar{display:flex;gap:5px;margin:4px 0 6px}',
+        '.fk-chip{flex:1;padding:5px 7px;border-radius:7px;background:rgba(15,23,42,0.85);border:1px solid rgba(34,211,238,0.24);color:#cbd5e1;font:700 9px/1.2 sans-serif;text-align:center;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:4px}',
+        '.fk-chip:hover{border-color:rgba(34,211,238,0.55);color:#fff}',
+        '.fk-chip.active{background:linear-gradient(135deg,rgba(8,145,178,0.35),rgba(16,185,129,0.28));border-color:#22d3ee;color:#67e8f9;box-shadow:0 0 10px rgba(6,182,212,0.2)}',
+        '.fk-sw{position:relative;width:32px;height:17px;flex:0 0 32px;border-radius:9px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.12);transition:all .15s;cursor:pointer}',
+        '.fk-sw::after{content:"";position:absolute;top:1.5px;left:1.5px;width:12px;height:12px;border-radius:50%;background:#94a3b8;transition:transform .15s,background .15s}',
+        '.fk-sw.on{background:linear-gradient(135deg,#0891b2,#10b981);border-color:rgba(103,232,249,0.7);box-shadow:0 0 10px rgba(6,182,212,0.45)}',
+        '.fk-sw.on::after{transform:translateX(15px);background:#fff}',
+        '.fk-slider{display:flex;align-items:center;gap:6px;padding:3.5px 0}',
+        '.fk-slider label{flex:0 0 78px;font-size:9.5px;color:#cbd5e1;font-weight:500}',
         '.fk-slider input[type=range]{flex:1;height:3px;-webkit-appearance:none;background:rgba(255,255,255,0.16);border-radius:2px;outline:none}',
         '.fk-slider input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:#22d3ee;box-shadow:0 0 8px #06b6d4;cursor:pointer}',
-        '.fk-slider .n{flex:0 0 40px;text-align:right;font-size:9px;color:#67e8f9;font-weight:700}',
-        '.fk-select{width:100%;box-sizing:border-box;padding:4px 7px;border:1px solid rgba(6,182,212,0.35);border-radius:6px;font:11px sans-serif;outline:none;background:rgba(15,23,42,0.9);color:#f1f5f9;cursor:pointer;margin-top:2px}',
+        '.fk-slider .n{flex:0 0 42px;text-align:right;font-size:9px;color:#67e8f9;font-weight:700;font-family:monospace}',
+        '.fk-select{width:100%;box-sizing:border-box;padding:4.5px 7px;border:1px solid rgba(34,211,238,0.32);border-radius:7px;font:11px sans-serif;outline:none;background:rgba(15,23,42,0.92);color:#f1f5f9;cursor:pointer;margin-top:2px}',
         '.fk-select:focus{border-color:#22d3ee}',
-        '.fk-btns{display:flex;gap:5px;margin-top:6px}',
-        '.fk-btn{flex:1;padding:5px 0;text-align:center;border-radius:6px;background:rgba(15,23,42,0.85);border:1px solid rgba(6,182,212,0.35);color:#e2e8f0;cursor:pointer;font:700 9.5px sans-serif;transition:all .15s}',
-        '.fk-btn:hover{background:rgba(6,182,212,0.25);border-color:#22d3ee;color:#fff}',
+        '.fk-btns{display:flex;gap:5px;margin-top:7px}',
+        '.fk-btn{flex:1;padding:5.5px 0;text-align:center;border-radius:7px;background:rgba(15,23,42,0.88);border:1px solid rgba(34,211,238,0.32);color:#e2e8f0;cursor:pointer;font:700 9.5px sans-serif;transition:all .15s}',
+        '.fk-btn:hover{background:rgba(34,211,238,0.22);border-color:#22d3ee;color:#fff}',
         '.fk-btn:active{transform:scale(0.97)}',
         '.fk-btn.save{background:linear-gradient(135deg,#0891b2,#10b981);border-color:transparent;color:#fff}',
-        '.fk-btn.save:hover{filter:brightness(1.15)}',
+        '.fk-btn.save:hover{filter:brightness(1.12)}',
         '.fk-tabbar{display:none}',
-        '.fk-toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:rgba(9,14,23,0.95);border:1px solid rgba(34,211,238,0.5);color:#67e8f9;padding:7px 14px;border-radius:8px;font:700 11px sans-serif;z-index:2147483601;box-shadow:0 6px 20px rgba(0,0,0,0.7);pointer-events:none;opacity:0;transition:opacity .2s}',
+        '.fk-toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:rgba(9,14,23,0.96);border:1px solid rgba(34,211,238,0.55);color:#67e8f9;padding:7px 14px;border-radius:8px;font:700 11px sans-serif;z-index:2147483601;box-shadow:0 6px 20px rgba(0,0,0,0.75);pointer-events:none;opacity:0;transition:opacity .2s}',
         '.fk-toast.show{opacity:1}'
       ].join('');
 
       var styleEl = document.createElement('style');
+      styleEl.id = 'cigar-ui-style';
       styleEl.setAttribute('data-pb', '1');
       styleEl.textContent = css;
       (document.head || document.documentElement).appendChild(styleEl);
@@ -3056,10 +3093,22 @@
 
       var bodyCol = mk('div', 'fk-body-col');
       var header = mk('div', 'fk-h');
-      header.innerHTML = '<span class="dot"></span><span class="title">CIGAR ELITE</span><span class="v">v' + V + '</span>';
+      header.innerHTML =
+        '<span class="dot"></span>' +
+        '<span class="title">CIGAR ELITE</span>' +
+        '<span class="pill" id="cigar-pill-pov">POV OFF</span>' +
+        '<span class="v">v' + V + '</span>';
       var collapseBtn = mk('div', 'fk-toggle', '<i class="fa-solid fa-chevron-up"></i>');
       header.appendChild(collapseBtn);
       bodyCol.appendChild(header);
+
+      _uiSyncers.push(function () {
+        var pvPill = document.getElementById('cigar-pill-pov');
+        if (pvPill) {
+          pvPill.textContent = P.povCircleOn ? 'POV ON' : 'POV OFF';
+          pvPill.classList.toggle('off', !P.povCircleOn);
+        }
+      });
 
       var body = mk('div', 'fk-body');
       bodyCol.appendChild(body);
@@ -3149,10 +3198,12 @@
       }
       function sw(getter, setter) {
         var el = mk('div', 'fk-sw' + (getter() ? ' on' : ''));
+        function sync() { el.classList.toggle('on', !!getter()); }
+        _uiSyncers.push(sync);
         el.addEventListener('click', function () {
           var v = !getter();
           setter(v);
-          el.classList.toggle('on', v);
+          syncAllUI();
           scheduleSave();
         });
         return el;
@@ -3165,6 +3216,12 @@
         inp.min = min; inp.max = max; inp.step = step;
         inp.value = getter();
         var n = mk('span', 'n', fmt ? fmt(getter()) : getter());
+        function sync() {
+          var val = getter();
+          inp.value = val;
+          n.textContent = fmt ? fmt(val) : val;
+        }
+        _uiSyncers.push(sync);
         inp.addEventListener('input', function () {
           var v = parseFloat(inp.value);
           setter(v);
@@ -3185,19 +3242,55 @@
           if (getter() === o.v) op.selected = true;
           sel.appendChild(op);
         });
+        _uiSyncers.push(function () { sel.value = getter(); });
         sel.addEventListener('change', function () { setter(sel.value); scheduleSave(); });
         wrap.appendChild(sel);
         return wrap;
       }
       function btn(label, fn, cls) {
         var b = mk('div', 'fk-btn' + (cls ? ' ' + cls : ''), label);
-        b.addEventListener('click', function () { fn(); scheduleSave(); });
+        b.addEventListener('click', function () { fn(); syncAllUI(); scheduleSave(); });
         return b;
       }
 
-      // TAB 1: HARD-LOCK AIMBOT & SILENT AIM POV
+      // TAB 1: HARD-LOCK AIMBOT & SILENT AIM POV + POV CIRCLE TOGGLE
       (function () {
         var pg = pages.aim;
+        pg.appendChild(sec('POV Circle Display', 'fa-circle-dot'));
+
+        var chipBar = mk('div', 'fk-chip-bar');
+        var btnPovToggle = mk('div', 'fk-chip' + (P.povCircleOn ? ' active' : ''),
+          '<i class="fa-solid fa-circle-notch"></i><span>Toggle POV Circle</span>');
+        var btnPovHide = mk('div', 'fk-chip',
+          '<i class="fa-solid fa-eye-slash"></i><span>Matikan Circle</span>');
+        _uiSyncers.push(function () {
+          btnPovToggle.classList.toggle('active', !!P.povCircleOn);
+        });
+        btnPovToggle.addEventListener('click', function () {
+          PB_API.povCircleOn(P.povCircleOn ? 0 : 1);
+          syncAllUI();
+          scheduleSave();
+          toast(P.povCircleOn ? 'POV Circle dinyalakan' : 'POV Circle dimatikan');
+        });
+        btnPovHide.addEventListener('click', function () {
+          PB_API.povCircleOn(0);
+          syncAllUI();
+          scheduleSave();
+          toast('POV Circle dimatikan');
+        });
+        chipBar.appendChild(btnPovToggle);
+        chipBar.appendChild(btnPovHide);
+        pg.appendChild(chipBar);
+
+        var rPovVis = row('Tampilkan POV Circle', 'Nyalakan/matikan lingkaran POV saja');
+        rPovVis.appendChild(sw(function () { return P.povCircleOn; }, function (v) { PB_API.povCircleOn(v); }));
+        pg.appendChild(rPovVis);
+
+        pg.appendChild(slider('POV Circle', 5, 600, 5,
+          function () { return P.povCircleR; },
+          function (v) { PB_API.povCircle(v); },
+          function (v) { return v + 'px'; }));
+
         pg.appendChild(sec('Hyperion Hard-Lock Aimbot', 'fa-crosshairs'));
         var r1 = row('Hard Aimbot', 'Kunci kamera ke target di dalam POV');
         r1.appendChild(sw(function () { return aimOn; }, function (v) { v ? PB_API.on() : PB_API.off(); }));
@@ -3225,11 +3318,6 @@
           [{ v: 'pov', t: 'POV Circle' }, { v: 'legacy', t: 'Legacy (360°)' }],
           function () { return P.lockMode; },
           function (v) { PB_API.lockMode(v); }));
-
-        pg.appendChild(slider('POV Circle', 5, 600, 5,
-          function () { return P.povCircleR; },
-          function (v) { PB_API.povCircle(v); },
-          function (v) { return v + 'px'; }));
 
         pg.appendChild(slider('Target Sticky', 0, 1, 0.05,
           function () { return P.sticky; },
@@ -3309,6 +3397,7 @@
           function (v) { return v.toFixed(1) + 'x'; }));
       })();
 
+      // TAB 3: WEAPON
       (function () {
         var pg = pages.weapon;
         pg.appendChild(sec('Fire', 'fa-gun'));
@@ -3396,6 +3485,7 @@
           function (v) { return v + 'ms'; }));
       })();
 
+      // TAB 5: NADE
       (function () {
         var pg = pages.nade;
         pg.appendChild(sec('Grenade', 'fa-bomb'));
@@ -3454,6 +3544,7 @@
         pg.appendChild(targetWrap);
       })();
 
+      // TAB 6: MISC
       (function () {
         var pg = pages.misc;
         pg.appendChild(sec('Survival', 'fa-shield'));
@@ -3526,6 +3617,8 @@
         pg.appendChild(btns);
       })();
 
+      syncAllUI();
+      fcTick();
       log(BRAND, V, 'UI ready');
     }
 
